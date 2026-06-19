@@ -65,7 +65,7 @@ export default function Dashboard() {
   const [timeAxis, setTimeAxis] = useState("step"); // step | clock
   const [hidden, setHidden] = useState({});
   const [big, setBig] = useState(false);
-  useEscClose(() => setBig(false));
+  useEscClose(() => setBig(false), big); // 크게보기 모달이 열렸을 때만 활성화
 
   // 물리 그룹 단위 계열(분리 노드는 같은 장소이므로 합산). 그룹 미사용 시 노드 그대로.
   const series = useMemo(() => {
