@@ -77,6 +77,8 @@ def validate_params(cfg: SimConfig) -> List[str]:
                     f"{tag} source.profile 의 hours/multipliers 길이가 같고 1 이상이어야 합니다")
                 chk(all(_finite(h) for h in pr.hours) and all(_finite(mm) and mm >= 0 for mm in pr.multipliers),
                     f"{tag} source.profile 값은 유한·음수가 아니어야 합니다")
+        chk(n.platform_role in ("both", "alight", "board"),
+            f"{tag} platform_role 는 both/alight/board 중 하나여야 합니다")
         for ti, t in enumerate(n.trains):
             tt = f"{tag} 열차#{ti}"
             chk(int(t.t_arrival) >= 0, f"{tt} t_arrival 는 0 이상이어야 합니다")
@@ -88,6 +90,20 @@ def validate_params(cfg: SimConfig) -> List[str]:
             chk(_finite(t.delay_std) and t.delay_std >= 0, f"{tt} delay_std 는 0 이상이어야 합니다")
             ob = getattr(t, "onboard_load", 0.0)
             chk(_finite(ob) and 0 <= ob <= max(0.0, t.train_capacity), f"{tt} onboard_load 는 [0, train_capacity] 이어야 합니다")
+        ts = n.train_schedule
+        if ts is not None:
+            st = f"{tag} 열차 스케줄"
+            chk(int(ts.first_arrival) >= 0, f"{st} 첫 도착(first_arrival)은 0 이상이어야 합니다")
+            chk(int(ts.headway) >= 0, f"{st} 배차간격(headway)은 0 이상이어야 합니다")
+            chk(int(ts.num_trains) >= 0, f"{st} 운행 대수(num_trains)는 0 이상이어야 합니다")
+            chk(_finite(ts.alight_mean) and ts.alight_mean >= 0, f"{st} alight_mean 는 0 이상이어야 합니다")
+            chk(_finite(ts.alight_sigma) and ts.alight_sigma >= 0, f"{st} alight_sigma 는 0 이상이어야 합니다")
+            chk(int(ts.dwell_steps) >= 1, f"{st} dwell_steps 는 1 이상이어야 합니다")
+            chk(_finite(ts.train_capacity) and ts.train_capacity >= 0, f"{st} train_capacity 는 0 이상이어야 합니다")
+            chk(_finite(ts.board_cap) and ts.board_cap >= 0, f"{st} board_cap 는 0 이상이어야 합니다")
+            chk(_finite(ts.delay_std) and ts.delay_std >= 0, f"{st} delay_std 는 0 이상이어야 합니다")
+            chk(_finite(ts.onboard_load) and 0 <= ts.onboard_load <= max(0.0, ts.train_capacity),
+                f"{st} onboard_load 는 [0, train_capacity] 이어야 합니다")
 
     # 링크
     tau_max = max(1, int(cfg.total_steps))

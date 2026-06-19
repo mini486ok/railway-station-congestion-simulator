@@ -151,6 +151,81 @@ class TrainArrival:
         )
 
 
+# ── 열차 운행 스케줄(첫 도착 + 배차간격) ──────────────────────────────────────────
+@dataclass
+class TrainSchedule:
+    """승강장 열차를 '첫 도착 시점 + 배차간격'으로 정의하는 스케줄.
+
+    개별 열차를 일일이 입력하는 대신, ``first_arrival`` 부터 ``headway`` 간격으로
+    ``num_trains`` 대(0 이하면 시뮬 끝까지 자동)를 생성한다. 모든 열차는 동일한
+    하차/탑승 파라미터를 공유한다. ``expand`` 로 ``TrainArrival`` 목록으로 펼친다.
+    """
+
+    first_arrival: int = 100      # 첫 열차 도착 스텝
+    headway: int = 300            # 배차간격(스텝). <=0 이면 1대만.
+    num_trains: int = 0           # 운행 대수. <=0 이면 시뮬 끝까지 자동.
+    alight_mean: float = 0.0
+    alight_sigma: float = 0.0
+    alight_dist: str = "normal"
+    dwell_steps: int = 30
+    train_capacity: float = 800.0
+    board_cap: float = 25.0
+    onboard_load: float = 0.0
+    delay_std: float = 0.0
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+    @staticmethod
+    def from_dict(d: Optional[Dict[str, Any]]) -> Optional["TrainSchedule"]:
+        if not d:
+            return None
+        return TrainSchedule(
+            first_arrival=_i(d, "first_arrival", 100),
+            headway=_i(d, "headway", 300),
+            num_trains=_i(d, "num_trains", 0),
+            alight_mean=_f(d, "alight_mean", 0.0),
+            alight_sigma=_f(d, "alight_sigma", 0.0),
+            alight_dist=str(d.get("alight_dist", "normal")),
+            dwell_steps=_i(d, "dwell_steps", 30),
+            train_capacity=_f(d, "train_capacity", 800.0),
+            board_cap=_f(d, "board_cap", 25.0),
+            onboard_load=_f(d, "onboard_load", 0.0),
+            delay_std=_f(d, "delay_std", 0.0),
+        )
+
+    def expand(self, total_steps: int) -> List["TrainArrival"]:
+        """[first_arrival, +headway, ...] 도착 시각으로 TrainArrival 목록 생성."""
+        out: List[TrainArrival] = []
+        fa = max(0, int(self.first_arrival))
+        hw = int(self.headway)
+        if hw <= 0:
+            count = 1
+        elif self.num_trains and int(self.num_trains) > 0:
+            count = int(self.num_trains)
+        else:
+            count = max(0, (int(total_steps) - fa) // hw + 1)
+        t = fa
+        for _ in range(count):
+            if t > int(total_steps):     # 시뮬 범위 밖 도착은 효과 없음
+                break
+            out.append(TrainArrival(
+                t_arrival=t,
+                alight_mean=self.alight_mean,
+                alight_sigma=self.alight_sigma,
+                alight_dist=self.alight_dist,
+                dwell_steps=self.dwell_steps,
+                train_capacity=self.train_capacity,
+                board_cap=self.board_cap,
+                onboard_load=self.onboard_load,
+                delay_std=self.delay_std,
+            ))
+            if hw <= 0:
+                break
+            t += hw
+        return out
+
+
 # ── 노드 ──────────────────────────────────────────────────────────────────────────
 @dataclass
 class NodeConfig:
@@ -163,7 +238,9 @@ class NodeConfig:
     v0: Optional[float] = None    # 자유보행속력(m/s). None 이면 종류별 기본값.
     n0: float = 0.0               # 초기 인원
     source: Optional[SourceSpec] = None      # 출입구/승강장 유입 생성
-    trains: List[TrainArrival] = field(default_factory=list)  # 승강장 열차 스케줄
+    trains: List[TrainArrival] = field(default_factory=list)  # (레거시) 개별 열차 목록
+    train_schedule: Optional["TrainSchedule"] = None  # 첫 도착+배차간격 스케줄(우선)
+    platform_role: str = "both"   # 승강장 역할: both | alight(하차=유입) | board(승차=유출)
     exit_weight: float = 0.0      # 출입구 -> OUTSIDE 퇴장 비율(출력 가중치의 일부)
     throughput_cap: float = 0.0   # 게이트 등 스텝당 통과(유출) 상한. 0이면 무제한.
     group: str = ""               # 물리적 동일 장소 그룹(예: 입구/출구를 한 출입구로 합산). 빈값이면 자신만.
@@ -184,6 +261,8 @@ class NodeConfig:
             "n0": self.n0,
             "source": self.source.to_dict() if self.source else None,
             "trains": [t.to_dict() for t in self.trains],
+            "train_schedule": self.train_schedule.to_dict() if self.train_schedule else None,
+            "platform_role": self.platform_role,
             "exit_weight": self.exit_weight,
             "throughput_cap": self.throughput_cap,
             "group": self.group,
@@ -206,6 +285,8 @@ class NodeConfig:
             n0=_f(d, "n0", 0.0),
             source=SourceSpec.from_dict(d.get("source")),
             trains=[TrainArrival.from_dict(t) for t in d.get("trains", [])],
+            train_schedule=TrainSchedule.from_dict(d.get("train_schedule")),
+            platform_role=str(d.get("platform_role", "both") or "both"),
             exit_weight=_f(d, "exit_weight", 0.0),
             throughput_cap=_f(d, "throughput_cap", 0.0),
             group=str(d.get("group", "") or ""),

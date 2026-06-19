@@ -51,31 +51,36 @@ export function defaultConfig() {
       {
         id: "E_in", name: "입구", kind: "entrance", group: "출입구", area: 40, p_stay_base: 0.3,
         dynamic_pstay: true, exit_weight: 0, n0: 0, x: 60, y: 110,
+        platform_role: "both", train_schedule: null,
         source: {
           type: "poisson", rate: 2.0, sigma: 0,
           profile: { hours: [0, 6, 8, 9, 12, 18, 19, 23], multipliers: [0.2, 0.6, 2.5, 1.5, 1.0, 2.2, 1.4, 0.4] },
         },
         trains: [],
       },
-      { id: "G_in", name: "진입 게이트", kind: "gate", group: "게이트", area: 18, p_stay_base: 0.2, dynamic_pstay: true, exit_weight: 0, n0: 0, x: 300, y: 110, source: null, trains: [] },
+      { id: "G_in", name: "진입 게이트", kind: "gate", group: "게이트", area: 18, p_stay_base: 0.2, dynamic_pstay: true, exit_weight: 0, n0: 0, x: 300, y: 110, source: null, trains: [], platform_role: "both", train_schedule: null },
       {
-        id: "P1", name: "승강장(상행)", kind: "platform", area: 250, p_stay_base: 0.55,
-        dynamic_pstay: true, exit_weight: 0, n0: 0, x: 560, y: 210, source: null,
-        trains: [
-          { t_arrival: 300, alight_mean: 110, alight_sigma: 15, alight_dist: "normal", dwell_steps: 30, train_capacity: 800, board_cap: 25 },
-          { t_arrival: 700, alight_mean: 110, alight_sigma: 15, alight_dist: "normal", dwell_steps: 30, train_capacity: 800, board_cap: 25 },
-          { t_arrival: 1100, alight_mean: 110, alight_sigma: 15, alight_dist: "normal", dwell_steps: 30, train_capacity: 800, board_cap: 25 },
-          { t_arrival: 1500, alight_mean: 110, alight_sigma: 15, alight_dist: "normal", dwell_steps: 30, train_capacity: 800, board_cap: 25 },
-        ],
+        // 승차(boarding): 역사에서 온 승객이 모여 열차에 탑승(유출). 같은 그룹 '승강장1'.
+        id: "P_board", name: "승강장1·승차", kind: "platform", group: "승강장1", area: 250, p_stay_base: 0.55,
+        dynamic_pstay: true, exit_weight: 0, n0: 0, x: 560, y: 110, source: null, trains: [],
+        platform_role: "board",
+        train_schedule: { first_arrival: 100, headway: 300, num_trains: 0, alight_mean: 0, alight_sigma: 0, alight_dist: "normal", dwell_steps: 30, train_capacity: 800, board_cap: 25, onboard_load: 0, delay_std: 0 },
       },
-      { id: "G_out", name: "진출 게이트", kind: "gate", group: "게이트", area: 18, p_stay_base: 0.2, dynamic_pstay: true, exit_weight: 0, n0: 0, x: 300, y: 310, source: null, trains: [] },
-      { id: "E_out", name: "출구", kind: "entrance", group: "출입구", area: 40, p_stay_base: 0.2, dynamic_pstay: true, exit_weight: 1.0, n0: 0, x: 60, y: 310, source: null, trains: [] },
+      {
+        // 하차(alighting): 열차에서 내린 승객이 유입. 같은 그룹 '승강장1' → 혼잡도 합산.
+        id: "P_alight", name: "승강장1·하차", kind: "platform", group: "승강장1", area: 250, p_stay_base: 0.45,
+        dynamic_pstay: true, exit_weight: 0, n0: 0, x: 560, y: 320, source: null, trains: [],
+        platform_role: "alight",
+        train_schedule: { first_arrival: 100, headway: 300, num_trains: 0, alight_mean: 110, alight_sigma: 15, alight_dist: "normal", dwell_steps: 30, train_capacity: 800, board_cap: 25, onboard_load: 0, delay_std: 0 },
+      },
+      { id: "G_out", name: "진출 게이트", kind: "gate", group: "게이트", area: 18, p_stay_base: 0.2, dynamic_pstay: true, exit_weight: 0, n0: 0, x: 300, y: 320, source: null, trains: [], platform_role: "both", train_schedule: null },
+      { id: "E_out", name: "출구", kind: "entrance", group: "출입구", area: 40, p_stay_base: 0.2, dynamic_pstay: true, exit_weight: 1.0, n0: 0, x: 60, y: 320, source: null, trains: [], platform_role: "both", train_schedule: null },
     ],
-    // 단방향: 입구→진입게이트→승강장 (진입) / 승강장→진출게이트→출구 (진출)
+    // 단방향: 입구→진입게이트→승차(탑승) / 하차→진출게이트→출구. 승차·하차는 '승강장1' 그룹으로 합산.
     links: [
       { src: "E_in", dst: "G_in", distance: 15, weight: 1.0, tau: null },
-      { src: "G_in", dst: "P1", distance: 35, weight: 1.0, tau: null },
-      { src: "P1", dst: "G_out", distance: 35, weight: 1.0, tau: null },
+      { src: "G_in", dst: "P_board", distance: 35, weight: 1.0, tau: null },
+      { src: "P_alight", dst: "G_out", distance: 35, weight: 1.0, tau: null },
       { src: "G_out", dst: "E_out", distance: 15, weight: 1.0, tau: null },
     ],
   };

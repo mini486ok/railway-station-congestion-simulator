@@ -65,6 +65,12 @@ input, select { font: inherit; border: 1px solid #cbd5e1; border-radius: 5px; pa
 .train-row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
 .train-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; flex: 1; }
 .train-grid label { font-size: 11px; color: #475569; display: flex; flex-direction: column; gap: 2px; }
+.train-grid input, .train-grid select { width: 100%; box-sizing: border-box; }
+
+/* 승강장 열차 스케줄(첫 도착+배차간격) */
+.sched-grid { margin: 6px 0; }
+.sched-block { border-left: 3px solid #e2e8f0; padding-left: 8px; margin-top: 8px; }
+.sched-h { font-size: 12px; font-weight: 600; color: #334155; margin-bottom: 2px; }
 
 .controls .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .controls .grid2 label { font-size: 12px; color: #475569; display: flex; flex-direction: column; gap: 2px; }

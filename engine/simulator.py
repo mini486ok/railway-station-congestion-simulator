@@ -93,13 +93,15 @@ class Simulator:
         self._train_remaining: List[List[float]] = []
         for k, pf in enumerate(m.platform_idx):
             trains = m.platform_trains[k]
+            role = m.platform_role[k]
             windows: List[Tuple[int, int]] = []
             rem: List[float] = []
             for tr in trains:
                 # 도착 지연(반-정규 jitter, >=0) → 정시성 깨짐을 데이터에 반영
                 delay = int(round(abs(self.delay_rng.normal(0.0, tr.delay_std)))) if tr.delay_std > 0 else 0
                 ta = int(tr.t_arrival) + delay
-                self._alight_events[ta].append((pf, tr))
+                if role != "board":          # 승차 전용 노드는 하차(유입) 없음
+                    self._alight_events[ta].append((pf, tr))
                 windows.append((ta, ta + int(tr.dwell_steps) - 1))
                 # 가용 좌석 = 정원 − 재차(onboard_load)
                 rem.append(max(0.0, float(tr.train_capacity) - float(tr.onboard_load)))
@@ -160,6 +162,8 @@ class Simulator:
     def _board(self, t: int) -> None:
         m = self.model
         for k, pf in enumerate(m.platform_idx):
+            if m.platform_role[k] == "alight":   # 하차 전용 노드는 탑승(유출) 없음
+                continue
             sink = m.train_sink_idx[k]
             windows = self._board_windows[k]
             # 활성(정차 중)인 모든 열차에 대해 탑승 처리(정차창 겹침 대응)

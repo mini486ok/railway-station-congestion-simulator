@@ -112,7 +112,8 @@ with sync_playwright() as p:
         page.locator(".modal-close").click()
         page.wait_for_timeout(200)
         dice_ok = page.locator("button:has-text('랜덤 시드')").count() > 0
-        page.locator(".infotip-btn").first.click()
+        # dispatch_event: Playwright 자동 스크롤(→ InfoTip scroll-close)을 피해 안정적으로 토글
+        page.locator(".infotip-btn").first.dispatch_event("click")
         page.wait_for_timeout(200)
         pop_ok = page.locator(".infotip-pop").count() > 0  # body 포털에 렌더(안 잘림)
         results.append(f"템플릿모달={tpl_ok}, 랜덤시드={dice_ok}, ⓘ포털={pop_ok}")

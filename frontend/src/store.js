@@ -83,6 +83,11 @@ export const useStore = create((set, get) => ({
       x: 140 + (count % 4) * 175, y: 110 + Math.floor(count / 4) * 125,
       source: (kind === "entrance" ? { type: "poisson", rate: 1.0, sigma: 0, profile: null } : null),
       trains: [],
+      platform_role: "both",
+      train_schedule: kind === "platform"
+        ? { first_arrival: 100, headway: 300, num_trains: 0, alight_mean: 100, alight_sigma: 15,
+            alight_dist: "normal", dwell_steps: 30, train_capacity: 800, board_cap: 25, onboard_load: 0, delay_std: 0 }
+        : null,
     };
     set((s) => ({ ...pushPast(s), config: { ...s.config, nodes: [...s.config.nodes, node] }, selection: { type: "node", id } }));
   },

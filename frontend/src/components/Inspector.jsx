@@ -3,6 +3,23 @@ import { NODE_KINDS } from "../defaults";
 import { round } from "../util";
 import InfoTip from "./InfoTip";
 
+// 유입/하차 인원 분포 — 평균(rate/mean)·표준편차(sigma) 기반
+const DISTS = [
+  { v: "poisson", l: "푸아송(Poisson) · 무작위 도착" },
+  { v: "normal", l: "정규(Normal)" },
+  { v: "negative_binomial", l: "음이항(과분산·군집)" },
+  { v: "uniform", l: "균등(Uniform)" },
+  { v: "lognormal", l: "로그정규(LogNormal·버스트)" },
+  { v: "constant", l: "상수(Constant)" },
+];
+// sigma(표준편차/반치폭) 입력이 의미 있는 분포
+const USES_SIGMA = new Set(["normal", "negative_binomial", "uniform", "lognormal"]);
+const DEFAULT_SCHEDULE = {
+  first_arrival: 100, headway: 300, num_trains: 0,
+  alight_mean: 100, alight_sigma: 15, alight_dist: "normal",
+  dwell_steps: 30, train_capacity: 800, board_cap: 25, onboard_load: 0, delay_std: 0,
+};
+
 function Field({ label, info, children }) {
   return (
     <label className="field">
@@ -23,7 +40,6 @@ function NodeEditor({ node }) {
 
   const isEntrance = node.kind === "entrance";
   const isPlatform = node.kind === "platform";
-  const canSource = isEntrance || isPlatform;
 
   const outW =
     links.filter((l) => l.src === node.id).reduce((a, l) => a + (l.weight || 0), 0) +
@@ -53,6 +69,10 @@ function NodeEditor({ node }) {
               patch.trains = [];
             }
             if (kind === "entrance" && !node.source) patch.source = { type: "poisson", rate: 1.0, sigma: 0, profile: null };
+            if (kind === "platform") {
+              if (!node.train_schedule) patch.train_schedule = { ...DEFAULT_SCHEDULE };
+              if (!node.platform_role) patch.platform_role = "both";
+            }
             set(patch);
           }}
         >
@@ -113,8 +133,8 @@ function NodeEditor({ node }) {
         </div>
       )}
 
-      {canSource && <SourceEditor node={node} set={set} />}
-      {isPlatform && <TrainEditor node={node} set={set} />}
+      {isEntrance && <SourceEditor node={node} set={set} />}
+      {isPlatform && <PlatformEditor node={node} set={set} />}
     </div>
   );
 }
@@ -128,9 +148,7 @@ function SourceEditor({ node, set }) {
       <Field label="분포" info="source.type">
         <select value={src.type} onChange={(e) => setSrc({ type: e.target.value })}>
           <option value="none">없음</option>
-          <option value="poisson">푸아송(Poisson)</option>
-          <option value="normal">정규(Normal)</option>
-          <option value="constant">상수(Constant)</option>
+          {DISTS.map((d) => <option key={d.v} value={d.v}>{d.l}</option>)}
         </select>
       </Field>
       {src.type !== "none" && (
@@ -138,8 +156,8 @@ function SourceEditor({ node, set }) {
           <input type="number" step="0.1" value={src.rate} onChange={(e) => setSrc({ rate: +e.target.value })} />
         </Field>
       )}
-      {src.type === "normal" && (
-        <Field label="표준편차(σ)" info="source.sigma">
+      {USES_SIGMA.has(src.type) && (
+        <Field label="표준편차/반치폭(σ)" info="source.sigma">
           <input type="number" step="0.1" value={src.sigma} onChange={(e) => setSrc({ sigma: +e.target.value })} />
         </Field>
       )}
@@ -148,27 +166,68 @@ function SourceEditor({ node, set }) {
   );
 }
 
-function TrainEditor({ node, set }) {
-  const trains = node.trains || [];
-  const upd = (i, patch) => set({ trains: trains.map((t, j) => (j === i ? { ...t, ...patch } : t)) });
-  const add = () =>
-    set({ trains: [...trains, { t_arrival: 100, alight_mean: 100, alight_sigma: 15, alight_dist: "normal", dwell_steps: 30, train_capacity: 800, board_cap: 25 }] });
-  const del = (i) => set({ trains: trains.filter((_, j) => j !== i) });
+// 승강장 역할(둘다/하차/승차) + 열차 스케줄(첫 도착 + 배차간격)
+function PlatformEditor({ node, set }) {
+  const role = node.platform_role || "both";
+  const s = node.train_schedule || DEFAULT_SCHEDULE;
+  const setS = (patch) => set({ train_schedule: { ...DEFAULT_SCHEDULE, ...s, ...patch } });
+  const showAlight = role === "both" || role === "alight";
+  const showBoard = role === "both" || role === "board";
   return (
     <div className="subsection">
-      <div className="sub-title">열차 스케줄 (하차=유입 / 탑승=유출) <InfoTip k="train.t_arrival" /></div>
-      {trains.map((t, i) => (
-        <div key={i} className="train-row">
-          <div className="train-grid">
-            <label>도착(스텝)<InfoTip k="train.t_arrival" /><input type="number" value={t.t_arrival} onChange={(e) => upd(i, { t_arrival: +e.target.value })} /></label>
-            <label>하차 평균<InfoTip k="train.alight_mean" /><input type="number" value={t.alight_mean} onChange={(e) => upd(i, { alight_mean: +e.target.value })} /></label>
-            <label>정차(스텝)<InfoTip k="train.dwell_steps" /><input type="number" value={t.dwell_steps} onChange={(e) => upd(i, { dwell_steps: +e.target.value })} /></label>
-            <label>탑승/스텝<InfoTip k="train.board_cap" /><input type="number" value={t.board_cap} onChange={(e) => upd(i, { board_cap: +e.target.value })} /></label>
-          </div>
-          <button className="danger small" onClick={() => del(i)}>×</button>
+      <div className="sub-title">승강장 역할 · 열차 스케줄 <InfoTip k="platform_role" /></div>
+      <Field label="역할" info="platform_role">
+        <select value={role} onChange={(e) => set({ platform_role: e.target.value })}>
+          <option value="both">둘 다(하차+승차)</option>
+          <option value="alight">하차(열차→역사 유입)</option>
+          <option value="board">승차(역사→열차 유출)</option>
+        </select>
+      </Field>
+      <div className="hint">
+        {role === "alight" && "열차에서 내린 승객이 이 노드로 유입됩니다(하차 전용). 같은 그룹의 승차 노드와 묶으면 혼잡도가 합산됩니다."}
+        {role === "board" && "역사에서 온 승객이 여기 모여 열차에 탑승(유출)합니다(승차 전용). 같은 그룹의 하차 노드와 묶으세요."}
+        {role === "both" && "한 노드에서 하차(유입)와 승차(유출)를 모두 처리합니다."}
+      </div>
+
+      <div className="train-grid sched-grid">
+        <label>첫 도착(스텝)<InfoTip k="schedule.first_arrival" /><input type="number" min="0" value={s.first_arrival} onChange={(e) => setS({ first_arrival: +e.target.value })} /></label>
+        <label>배차간격(스텝)<InfoTip k="schedule.headway" /><input type="number" min="0" value={s.headway} onChange={(e) => setS({ headway: +e.target.value })} /></label>
+        <label>운행 대수(0=끝까지)<InfoTip k="schedule.num_trains" /><input type="number" min="0" value={s.num_trains} onChange={(e) => setS({ num_trains: +e.target.value })} /></label>
+        {showBoard && (
+          <label>정차(스텝)<InfoTip k="train.dwell_steps" /><input type="number" min="1" value={s.dwell_steps} onChange={(e) => setS({ dwell_steps: +e.target.value })} /></label>
+        )}
+      </div>
+
+      {showAlight && (
+        <div className="sched-block">
+          <div className="sched-h">하차(유입)</div>
+          <Field label="하차 분포" info="schedule.alight_dist">
+            <select value={s.alight_dist} onChange={(e) => setS({ alight_dist: e.target.value })}>
+              {DISTS.map((d) => <option key={d.v} value={d.v}>{d.l}</option>)}
+            </select>
+          </Field>
+          <Field label="하차 평균(명/열차)" info="train.alight_mean">
+            <input type="number" min="0" value={s.alight_mean} onChange={(e) => setS({ alight_mean: +e.target.value })} />
+          </Field>
+          {USES_SIGMA.has(s.alight_dist) && (
+            <Field label="표준편차/반치폭(σ)" info="source.sigma">
+              <input type="number" min="0" value={s.alight_sigma} onChange={(e) => setS({ alight_sigma: +e.target.value })} />
+            </Field>
+          )}
         </div>
-      ))}
-      <button className="chip" onClick={add}>+ 열차 추가</button>
+      )}
+
+      {showBoard && (
+        <div className="sched-block">
+          <div className="sched-h">승차(유출)</div>
+          <Field label="열차 용량(명)" info="schedule.train_capacity">
+            <input type="number" min="0" value={s.train_capacity} onChange={(e) => setS({ train_capacity: +e.target.value })} />
+          </Field>
+          <Field label="탑승/스텝(명)" info="train.board_cap">
+            <input type="number" min="0" value={s.board_cap} onChange={(e) => setS({ board_cap: +e.target.value })} />
+          </Field>
+        </div>
+      )}
     </div>
   );
 }

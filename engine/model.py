@@ -59,6 +59,7 @@ class Model:
     platform_idx: List[int]
     train_sink_idx: List[int]                          # platform_idx 와 평행
     platform_trains: List[List[TrainArrival]]          # platform_idx 와 평행
+    platform_role: List[str]                           # platform_idx 와 평행: both|alight|board
 
     # 그래프 구조(real->real 링크만; 인접행렬/엣지 export 용)
     graph_edges: List[Tuple[int, int, float, float, int]]  # (s, d, weight, distance, tau)
@@ -169,7 +170,10 @@ def build_model(cfg: SimConfig) -> Model:
             # 출력처 없음 → P_move=0 으로 고정(인원 누수 방지)
             p_stay_base[si] = 1.0
             dynamic_mask[si] = False
-            if kinds[si] in SELF_GENERATING_KINDS:
+            if kinds[si] == "platform" and nodes[si].platform_role == "board":
+                # 승차(board) 노드는 링크 대신 열차 탑승(_board)으로 유출 → 정상. 경고 없음.
+                pass
+            elif kinds[si] in SELF_GENERATING_KINDS:
                 warnings.append(
                     f"노드 {nodes[si].id!r}(출입구/승강장)에 출력 링크와 퇴장(exit_weight)이 모두 없어 "
                     f"생성/하차 인원이 영구히 정체됩니다 — 출력 링크나 exit_weight를 추가하세요"
@@ -250,11 +254,21 @@ def build_model(cfg: SimConfig) -> Model:
                 continue
             sources.append((i, n.source))
 
-    # ── 승강장 열차 스케줄 ──
+    # ── 승강장 열차 스케줄(첫 도착+배차간격 우선, 없으면 레거시 trains) + 역할 ──
     platform_trains: List[List[TrainArrival]] = []
+    platform_role: List[str] = []
     for pi in platform_idx:
-        trains = sorted(nodes[pi].trains, key=lambda t: t.t_arrival)
+        if nodes[pi].train_schedule is not None:
+            trains = nodes[pi].train_schedule.expand(cfg.total_steps)
+        else:
+            trains = list(nodes[pi].trains)
+        trains = sorted(trains, key=lambda t: t.t_arrival)
         platform_trains.append(trains)
+        role = nodes[pi].platform_role or "both"
+        if role not in ("both", "alight", "board"):
+            role = "both"
+            warnings.append(f"승강장 {nodes[pi].id!r} platform_role 알 수 없음 → both 로 처리")
+        platform_role.append(role)
 
     return Model(
         n_real=R,
@@ -284,6 +298,7 @@ def build_model(cfg: SimConfig) -> Model:
         platform_idx=platform_idx,
         train_sink_idx=train_sink_idx,
         platform_trains=platform_trains,
+        platform_role=platform_role,
         graph_edges=graph_edges,
         elevator_idx=elevator_idx,
         elevator_cycle=elevator_cycle,
