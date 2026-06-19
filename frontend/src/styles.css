@@ -33,7 +33,7 @@ input, select { font: inherit; border: 1px solid #cbd5e1; border-radius: 5px; pa
 
 .main { display: flex; flex: 1; min-height: 0; }
 .left { flex: 1; min-width: 0; position: relative; background: #fff; }
-.right {
+.side-panel {
   width: 360px; flex-shrink: 0; overflow-y: auto; padding: 10px;
   background: #f8fafc; border-left: 1px solid #e2e8f0;
 }
@@ -178,13 +178,10 @@ input, select { font: inherit; border: 1px solid #cbd5e1; border-radius: 5px; pa
 /* 차트 빈 상태 */
 .chart-empty { display: flex; align-items: center; justify-content: center; height: 100%; color: #64748b; font-size: 13px; }
 
-/* InfoTip: 우측 패널 끝 항목에서 좌측으로 펼쳐 클리핑 완화 */
-.right .infotip-box, .train-grid .infotip-box { left: auto; right: 0; }
-
 /* 반응형(좁은 화면): 우측 패널을 하단으로 스택 */
 @media (max-width: 1024px) {
   .main { flex-direction: column; }
-  .right { width: 100%; border-left: none; border-top: 1px solid #e2e8f0; max-height: 340px; }
+  .side-panel { width: 100%; border-left: none; border-top: 1px solid #e2e8f0; max-height: 340px; }
   .left { min-height: 340px; }
   .topbar { flex-wrap: wrap; }
   .topbar .sub { display: none; }

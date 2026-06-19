@@ -52,7 +52,7 @@ export default function App() {
         <div className="left">
           <GraphEditor />
         </div>
-        <aside className="right">
+        <aside className="side-panel">
           <section className="card">
             <h3>시뮬레이션</h3>
             <Controls />

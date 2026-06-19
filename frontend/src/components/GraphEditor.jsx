@@ -53,19 +53,22 @@ export default function GraphEditor() {
     config.nodes.forEach((n, i) => (m[n.id] = i));
     return m;
   }, [config.nodes]);
+  // 노드 집합(추가/삭제) 키 — 속성 편집으로는 바뀌지 않음
+  const nodeIdsKey = useMemo(() => config.nodes.map((n) => n.id).join("|"), [config.nodes]);
 
-  // 구조 동기화: 노드 추가/삭제/이동/속성 변경 시 React Flow 상태 재구성
+  // 구조 동기화: 노드 추가/삭제 시에만 React Flow 노드 배열을 (재)생성.
+  // 속성/위치 편집으로는 재생성하지 않아 입력 포커스가 유지된다.
   useEffect(() => {
     setRfNodes(
       config.nodes.map((n) => ({
         id: n.id,
         position: { x: n.x, y: n.y },
         data: { label: nodeLabel(n, null, 0) },
-        style: nodeStyle(n, 0, selection?.type === "node" && selection.id === n.id, false, config.dynamics.rho_cap),
+        style: nodeStyle(n, 0, false, false, config.dynamics.rho_cap),
       }))
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [config.nodes, setRfNodes]);
+  }, [nodeIdsKey, setRfNodes]);
 
   // 링크 동기화
   useEffect(() => {
@@ -113,14 +116,15 @@ export default function GraphEditor() {
         const cnt = snapshot ? gCount[node.id] : null;
         const selected = selection?.type === "node" && selection.id === node.id;
         return {
-          ...node,
-          data: { label: nodeLabel(n, cnt, dens) },
+          ...node,                                   // 기존 노드 보존(포커스/측정 유지)
+          position: { x: n.x, y: n.y },              // 위치 편집 반영
+          data: { label: nodeLabel(n, cnt, dens) },  // 이름/종류/혼잡도 반영
           style: nodeStyle(n, dens, selected, !!snapshot, config.dynamics.rho_cap),
         };
       })
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [snapshot, selection, idIndex]);
+  }, [snapshot, selection, config.nodes]);
 
   const handleNodesChange = useCallback(
     (changes) => {
