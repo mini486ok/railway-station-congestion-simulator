@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+.venv/
+venv/
+
+# 시뮬레이션 출력
+out/
+*.npz
+!examples/**/*.npz
+
+# 빌드 산출물(엔진 wheel 은 CI/로컬 빌드 시 생성)
+/dist/
+/build/
+*.egg-info/
+frontend/public/*.whl
+
+# 프론트엔드
+node_modules/
+frontend/dist/
+frontend/public/pyodide/
+
+# 브라우저 테스트 스크린샷
+e2e_*.png
+
+# OS
+.DS_Store
+Thumbs.db

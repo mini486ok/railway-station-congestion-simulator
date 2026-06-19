@@ -1,0 +1,9 @@
+# 엔진 코어 (Pyodide 호환: 순수 Python + numpy 만 사용)
+numpy>=1.26
+
+# 로컬 개발/테스트
+pytest>=8.0
+
+# 참조 STGCN 베이스라인(로컬 전용, Phase 6) — 필요 시 설치
+# torch>=2.2
+# pandas>=2.0
