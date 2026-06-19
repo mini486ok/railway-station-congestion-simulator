@@ -9,10 +9,21 @@ import ExportPanel from "./components/ExportPanel";
 import HelpModal from "./components/HelpModal";
 import TemplatesModal from "./components/TemplatesModal";
 
+// 편집 가능한 필드에 포커스가 있으면 Ctrl+Z 는 브라우저 기본 텍스트 되돌리기에 양보.
+function isEditable(el) {
+  return !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
+}
+
 export default function App() {
   const inited = useRef(false);
+  const fileRef = useRef(null);
   const engineStatus = useStore((s) => s.engineStatus);
   const engineMsg = useStore((s) => s.engineMsg);
+  const replaceConfig = useStore((s) => s.replaceConfig);
+  const undo = useStore((s) => s.undo);
+  const redo = useStore((s) => s.redo);
+  const canUndo = useStore((s) => s.past.length > 0);
+  const canRedo = useStore((s) => s.future.length > 0);
   const [help, setHelp] = useState(false);
   const [tpl, setTpl] = useState(false);
 
@@ -32,6 +43,54 @@ export default function App() {
     st.setEngineClient(client);
   }, []);
 
+  // 전역 단축키: Ctrl/⌘+Z 되돌리기, Ctrl/⌘+Shift+Z(또는 Ctrl+Y) 다시 실행.
+  useEffect(() => {
+    const onKey = (e) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      const k = e.key.toLowerCase();
+      if (k !== "z" && k !== "y") return;
+      if (isEditable(document.activeElement)) return; // 입력 중엔 기본 동작 유지
+      e.preventDefault();
+      const st = useStore.getState();
+      if (k === "y" || (k === "z" && e.shiftKey)) st.redo();
+      else st.undo();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // 현재 설정을 JSON 파일로 저장(다운로드).
+  const handleSave = () => {
+    const cfg = useStore.getState().config;
+    const blob = new Blob([JSON.stringify(cfg, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const safe = (cfg.name || "station_config").replace(/[^\w가-힣-]+/g, "_") || "station_config";
+    a.href = url;
+    a.download = `${safe}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  // JSON 설정 파일 불러오기.
+  const handleFile = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = ""; // 같은 파일 재선택 허용
+    if (!file) return;
+    try {
+      const cfg = JSON.parse(await file.text());
+      if (!cfg || !Array.isArray(cfg.nodes) || !Array.isArray(cfg.links)) {
+        alert("올바른 설정 파일이 아닙니다 (nodes/links 항목이 필요합니다).");
+        return;
+      }
+      replaceConfig(cfg);
+    } catch (err) {
+      alert("불러오기에 실패했습니다: " + (err && err.message ? err.message : err));
+    }
+  };
+
   const badge = engineStatus === "ready" ? "ready" : engineStatus === "error" ? "error" : "loading";
 
   return (
@@ -42,10 +101,17 @@ export default function App() {
           <span className="dot" /> {engineMsg}
         </div>
         <div className="topbar-actions">
+          <button onClick={() => undo()} disabled={!canUndo} title="되돌리기 (Ctrl+Z)">↶ 되돌리기</button>
+          <button onClick={() => redo()} disabled={!canRedo} title="다시 실행 (Ctrl+Shift+Z)">↷ 다시</button>
+          <span className="tb-sep" />
+          <button onClick={handleSave} title="현재 설정을 JSON 파일로 저장">💾 저장</button>
+          <button onClick={() => fileRef.current && fileRef.current.click()} title="JSON 설정 파일 불러오기">📂 불러오기</button>
+          <input ref={fileRef} type="file" accept="application/json,.json" style={{ display: "none" }} onChange={handleFile} />
+          <span className="tb-sep" />
           <button onClick={() => setTpl(true)}>📁 템플릿</button>
           <button onClick={() => setHelp(true)}>📖 사용법 · 출력 설명</button>
         </div>
-        <div className="sub">브라우저 Python(Pyodide) · 서버 없음</div>
+        <div className="sub">브라우저 Python(Pyodide) · 서버 없음 · 자동 저장됨</div>
       </header>
 
       <div className="main">

@@ -188,9 +188,27 @@ input, select { font: inherit; border: 1px solid #cbd5e1; border-radius: 5px; pa
 }
 
 /* 상단 도움말 버튼 */
-.topbar-actions { display: flex; gap: 6px; }
+.topbar-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .topbar-actions button { background: #1e293b; color: #e2e8f0; border-color: #334155; font-size: 13px; }
-.topbar-actions button:hover { background: #334155; }
+.topbar-actions button:hover:not(:disabled) { background: #334155; }
+.topbar-actions button:disabled { opacity: 0.4; cursor: not-allowed; }
+.tb-sep { width: 1px; align-self: stretch; background: #334155; margin: 2px 2px; }
+
+/* 캔버스 엣지: 가중치 라벨 + 삭제(✕) 버튼 */
+.edge-tools {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: rgba(255, 255, 255, 0.92); border: 1px solid #cbd5e1; border-radius: 8px;
+  padding: 1px 4px; box-shadow: 0 1px 4px rgba(15, 23, 42, 0.15); font-size: 10px;
+}
+.edge-tools.sel { border-color: #111827; }
+.edge-w { color: #475569; font-weight: 600; white-space: nowrap; }
+.edge-del {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px; padding: 0; border-radius: 50%;
+  border: 1px solid #fca5a5; background: #fef2f2; color: #dc2626;
+  font-size: 10px; line-height: 1; cursor: pointer; font-weight: 700;
+}
+.edge-del:hover { background: #dc2626; color: #fff; border-color: #dc2626; }
 
 /* ⓘ 툴팁 */
 .infotip { position: relative; display: inline-flex; margin-left: 4px; vertical-align: middle; }

@@ -4,6 +4,10 @@ import "reactflow/dist/style.css";
 import { useStore } from "../store";
 import { KIND_COLOR, NODE_KINDS, groupOf } from "../defaults";
 import { heatColor, round } from "../util";
+import DeletableEdge from "./DeletableEdge";
+
+// 커스텀 엣지(가중치 라벨 + ✕ 삭제 버튼). 모듈 상수로 두어 매 렌더 재생성 방지.
+const EDGE_TYPES = { deletable: DeletableEdge };
 
 const kindLabel = (k) => NODE_KINDS.find((x) => x.key === k)?.label || k;
 
@@ -48,11 +52,6 @@ export default function GraphEditor() {
   const [rfNodes, setRfNodes, onNodesChange] = useNodesState([]);
   const [rfEdges, setRfEdges, onEdgesChange] = useEdgesState([]);
 
-  const idIndex = useMemo(() => {
-    const m = {};
-    config.nodes.forEach((n, i) => (m[n.id] = i));
-    return m;
-  }, [config.nodes]);
   // 노드 집합(추가/삭제) 키 — 속성 편집으로는 바뀌지 않음
   const nodeIdsKey = useMemo(() => config.nodes.map((n) => n.id).join("|"), [config.nodes]);
 
@@ -70,24 +69,25 @@ export default function GraphEditor() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodeIdsKey, setRfNodes]);
 
-  // 링크 동기화
+  // 링크 동기화 — 커스텀 엣지(✕ 삭제 버튼 포함)
   useEffect(() => {
     setRfEdges(
-      config.links.map((l) => ({
-        id: `${l.src}->${l.dst}`,
-        source: l.src,
-        target: l.dst,
-        label: `w=${round(l.weight, 2)}`,
-        labelStyle: { fontSize: 10, fill: "#475569" },
-        markerEnd: { type: "arrowclosed" },
-        style: {
-          stroke: selection?.type === "link" && selection.id === `${l.src}->${l.dst}` ? "#111827" : "#94a3b8",
-          strokeWidth: 2,
-        },
-      }))
+      config.links.map((l) => {
+        const id = `${l.src}->${l.dst}`;
+        const sel = selection?.type === "link" && selection.id === id;
+        return {
+          id,
+          source: l.src,
+          target: l.dst,
+          type: "deletable",
+          data: { weight: l.weight, running, onDelete: () => removeLink(l.src, l.dst) },
+          markerEnd: { type: "arrowclosed" },
+          style: { stroke: sel ? "#111827" : "#94a3b8", strokeWidth: sel ? 2.5 : 2 },
+        };
+      })
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [config.links, selection, setRfEdges]);
+  }, [config.links, selection, running, removeLink, setRfEdges]);
 
   // 히트맵/선택 시각화: 스냅샷·선택 변화 시 style·label 만 갱신(위치·측정 유지)
   useEffect(() => {
@@ -126,15 +126,15 @@ export default function GraphEditor() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [snapshot, selection, config.nodes]);
 
-  const handleNodesChange = useCallback(
-    (changes) => {
-      onNodesChange(changes);
-      changes.forEach((c) => {
-        if (c.type === "position" && c.position && c.dragging === false)
-          moveNode(c.id, Math.round(c.position.x), Math.round(c.position.y));
-      });
+  // 드래그 중에는 React Flow 내부 상태(onNodesChange)만 갱신해 부드럽게 움직이고,
+  // 드래그가 끝나면 onNodeDragStop 에서 최종 좌표를 config 에 커밋한다.
+  // (v11 의 position change 이벤트는 종료 시 position 을 항상 담지 않아 커밋이 누락 →
+  //  재렌더 때 원위치로 튀던 문제를 onNodeDragStop 으로 확실히 해결.)
+  const onNodeDragStop = useCallback(
+    (_e, node) => {
+      if (node && node.position) moveNode(node.id, Math.round(node.position.x), Math.round(node.position.y));
     },
-    [onNodesChange, moveNode]
+    [moveNode]
   );
 
   const onConnect = useCallback((p) => addLink(p.source, p.target), [addLink]);
@@ -216,8 +216,10 @@ export default function GraphEditor() {
       <ReactFlow
         nodes={rfNodes}
         edges={rfEdges}
-        onNodesChange={handleNodesChange}
+        edgeTypes={EDGE_TYPES}
+        onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
+        onNodeDragStop={onNodeDragStop}
         onNodesDelete={onNodesDelete}
         onEdgesDelete={onEdgesDelete}
         nodesDraggable={!running}

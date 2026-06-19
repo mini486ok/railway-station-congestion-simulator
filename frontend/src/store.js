@@ -4,9 +4,46 @@ import { defaultConfig } from "./defaults";
 let _seq = 100;
 const nextId = (prefix) => `${prefix}${_seq++}`;
 
+// 불러온 config 에 N### 형식 노드가 있으면 다음 자동 id 가 겹치지 않게 시퀀스를 올린다.
+function bumpSeq(cfg) {
+  let mx = 99;
+  (cfg?.nodes || []).forEach((n) => {
+    const m = /^N(\d+)$/.exec(n.id || "");
+    if (m) mx = Math.max(mx, +m[1]);
+  });
+  if (mx + 1 > _seq) _seq = mx + 1;
+}
+
+const AUTOSAVE_KEY = "sc_autosave_v1";
+const HISTORY_MAX = 60;
+
+// 시작 시 자동저장된 설정을 복원(없으면 기본 예제).
+function loadInitialConfig() {
+  try {
+    const raw = localStorage.getItem(AUTOSAVE_KEY);
+    if (raw) {
+      const cfg = JSON.parse(raw);
+      if (cfg && Array.isArray(cfg.nodes) && Array.isArray(cfg.links)) {
+        bumpSeq(cfg);
+        return cfg;
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return defaultConfig();
+}
+
+// 되돌리기 히스토리에 직전 config 를 적재(이후 redo 는 무효화).
+const pushPast = (s) => ({ past: [...s.past, s.config].slice(-HISTORY_MAX), future: [] });
+
 export const useStore = create((set, get) => ({
   // ── 설정(역사 그래프 + 시뮬 파라미터) ──
-  config: defaultConfig(),
+  config: loadInitialConfig(),
+
+  // ── 되돌리기/다시실행 히스토리(노드·링크 생성/삭제/이동/불러오기 단위) ──
+  past: [],
+  future: [],
 
   // ── 선택/검증/런타임 ──
   selection: null, // { type: 'node'|'link', id }
@@ -20,13 +57,17 @@ export const useStore = create((set, get) => ({
   engine: null, // EngineClient 인스턴스
   setEngineClient: (engine) => set({ engine }),
 
-  // ── 설정 갱신 ──
+  // ── 설정 갱신(파라미터 편집은 히스토리에 쌓지 않음 — 생성/삭제/이동만) ──
   setConfig: (patch) => set((s) => ({ config: { ...s.config, ...patch } })),
   setDynamics: (patch) =>
     set((s) => ({ config: { ...s.config, dynamics: { ...s.config.dynamics, ...patch } } })),
   setExport: (patch) =>
     set((s) => ({ config: { ...s.config, export: { ...s.config.export, ...patch } } })),
-  replaceConfig: (cfg) => set({ config: cfg, selection: null, history: [], snapshot: null }),
+  // 설정 전체 교체(불러오기/템플릿). 되돌리기 가능하도록 히스토리에 적재.
+  replaceConfig: (cfg) => {
+    bumpSeq(cfg);
+    set((s) => ({ ...pushPast(s), config: cfg, selection: null, history: [], snapshot: null }));
+  },
 
   // ── 노드 ──
   addNode: (kind = "corridor") => {
@@ -43,16 +84,18 @@ export const useStore = create((set, get) => ({
       source: (kind === "entrance" ? { type: "poisson", rate: 1.0, sigma: 0, profile: null } : null),
       trains: [],
     };
-    set((s) => ({ config: { ...s.config, nodes: [...s.config.nodes, node] }, selection: { type: "node", id } }));
+    set((s) => ({ ...pushPast(s), config: { ...s.config, nodes: [...s.config.nodes, node] }, selection: { type: "node", id } }));
   },
   updateNode: (id, patch) =>
     set((s) => ({
       config: { ...s.config, nodes: s.config.nodes.map((n) => (n.id === id ? { ...n, ...patch } : n)) },
     })),
+  // 드래그 종료 위치 커밋(되돌리기 단위로 기록).
   moveNode: (id, x, y) =>
-    set((s) => ({ config: { ...s.config, nodes: s.config.nodes.map((n) => (n.id === id ? { ...n, x, y } : n)) } })),
+    set((s) => ({ ...pushPast(s), config: { ...s.config, nodes: s.config.nodes.map((n) => (n.id === id ? { ...n, x, y } : n)) } })),
   removeNode: (id) =>
     set((s) => ({
+      ...pushPast(s),
       config: {
         ...s.config,
         nodes: s.config.nodes.filter((n) => n.id !== id),
@@ -67,7 +110,7 @@ export const useStore = create((set, get) => ({
     const exists = get().config.links.some((l) => l.src === src && l.dst === dst);
     if (exists) return;
     const link = { src, dst, distance: 15, weight: 1.0, tau: null };
-    set((s) => ({ config: { ...s.config, links: [...s.config.links, link] }, selection: { type: "link", id: `${src}->${dst}` } }));
+    set((s) => ({ ...pushPast(s), config: { ...s.config, links: [...s.config.links, link] }, selection: { type: "link", id: `${src}->${dst}` } }));
   },
   updateLink: (src, dst, patch) =>
     set((s) => ({
@@ -78,9 +121,34 @@ export const useStore = create((set, get) => ({
     })),
   removeLink: (src, dst) =>
     set((s) => ({
+      ...pushPast(s),
       config: { ...s.config, links: s.config.links.filter((l) => !(l.src === src && l.dst === dst)) },
       selection: null,
     })),
+
+  // ── 되돌리기 / 다시실행 ──
+  undo: () =>
+    set((s) => {
+      if (!s.past.length) return {};
+      const prev = s.past[s.past.length - 1];
+      return {
+        config: prev,
+        past: s.past.slice(0, -1),
+        future: [s.config, ...s.future].slice(0, HISTORY_MAX),
+        selection: null,
+      };
+    }),
+  redo: () =>
+    set((s) => {
+      if (!s.future.length) return {};
+      const nxt = s.future[0];
+      return {
+        config: nxt,
+        future: s.future.slice(1),
+        past: [...s.past, s.config].slice(-HISTORY_MAX),
+        selection: null,
+      };
+    }),
 
   setSelection: (selection) => set({ selection }),
 
@@ -104,3 +172,22 @@ export const useStore = create((set, get) => ({
       return { snapshot: snap, history };
     }),
 }));
+
+// 자동 저장: config 가 바뀔 때마다 localStorage 에 보존(새로고침/재방문 시 복원).
+// config 참조가 실제로 바뀐 경우에만 직렬화해 시뮬 스냅샷 갱신에는 반응하지 않는다.
+let _lastSavedConfig = useStore.getState().config;
+try {
+  localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(_lastSavedConfig));
+} catch {
+  /* ignore */
+}
+useStore.subscribe((s) => {
+  if (s.config !== _lastSavedConfig) {
+    _lastSavedConfig = s.config;
+    try {
+      localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(s.config));
+    } catch {
+      /* ignore */
+    }
+  }
+});
