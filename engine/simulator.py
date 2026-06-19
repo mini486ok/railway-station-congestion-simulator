@@ -183,14 +183,38 @@ class Simulator:
                 self._train_remaining[k][j] -= board
                 self._last_board[pf] += board  # 탑승 유출 기록(outflow 채널 일관성)
 
+    # ── 엘리베이터: 주기마다 용량만큼 배치 유출 ──
+    def _elevator(self, t: int) -> None:
+        m = self.model
+        for k, ev in enumerate(m.elevator_idx):
+            cyc = m.elevator_cycle[k]
+            if cyc < 1 or (t % cyc) != (cyc - 1):
+                continue  # 운행 주기의 마지막 슬롯에만 운행
+            avail = self.N[ev]
+            cap = m.elevator_capacity[k]
+            batch = min(avail, cap) if cap > 0 else avail
+            if batch <= 0:
+                continue
+            if self.cfg.integer_mode:
+                batch = float(np.floor(batch))
+                if batch <= 0:
+                    continue
+            lis = m.elevator_links[k]
+            flow = batch * m.weight[lis]                 # 출력 가중치(합=1)로 분배
+            slots = (t + m.tau[lis]) % m.ring_len
+            np.add.at(self.arrival_ring, (slots, m.dst[lis]), flow)
+            self.N[ev] -= batch
+            self._last_board[ev] += batch                # 유출 기록(outflow 채널)
+
     # ── 한 스텝 ──
     def step(self) -> None:
         m = self.model
         t = self.t
 
-        # 0) 승강장 우선 탑승(탑승량은 self._last_board 에 누적 → outflow 기록 일관성)
+        # 0) 승강장 우선 탑승 + 엘리베이터 주기 배치 유출(둘 다 self._last_board 에 누적)
         self._last_board = np.zeros(m.n_total, dtype=np.float64)
         self._board(t)
+        self._elevator(t)
 
         # 1) P_move
         p_move = 1.0 - self.p_stay

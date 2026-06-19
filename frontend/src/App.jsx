@@ -7,12 +7,14 @@ import Controls from "./components/Controls";
 import Dashboard from "./components/Dashboard";
 import ExportPanel from "./components/ExportPanel";
 import HelpModal from "./components/HelpModal";
+import TemplatesModal from "./components/TemplatesModal";
 
 export default function App() {
   const inited = useRef(false);
   const engineStatus = useStore((s) => s.engineStatus);
   const engineMsg = useStore((s) => s.engineMsg);
   const [help, setHelp] = useState(false);
+  const [tpl, setTpl] = useState(false);
 
   useEffect(() => {
     if (inited.current) return;
@@ -40,6 +42,7 @@ export default function App() {
           <span className="dot" /> {engineMsg}
         </div>
         <div className="topbar-actions">
+          <button onClick={() => setTpl(true)}>📁 템플릿</button>
           <button onClick={() => setHelp(true)}>📖 사용법 · 출력 설명</button>
         </div>
         <div className="sub">브라우저 Python(Pyodide) · 서버 없음</div>
@@ -69,6 +72,7 @@ export default function App() {
       </div>
 
       {help && <HelpModal onClose={() => setHelp(false)} />}
+      {tpl && <TemplatesModal onClose={() => setTpl(false)} />}
     </div>
   );
 }

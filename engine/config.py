@@ -166,6 +166,9 @@ class NodeConfig:
     trains: List[TrainArrival] = field(default_factory=list)  # 승강장 열차 스케줄
     exit_weight: float = 0.0      # 출입구 -> OUTSIDE 퇴장 비율(출력 가중치의 일부)
     throughput_cap: float = 0.0   # 게이트 등 스텝당 통과(유출) 상한. 0이면 무제한.
+    group: str = ""               # 물리적 동일 장소 그룹(예: 입구/출구를 한 출입구로 합산). 빈값이면 자신만.
+    elevator_capacity: float = 0.0  # 엘리베이터 1회 운행 수송 인원. 0이면 무제한.
+    elevator_cycle: int = 0       # 엘리베이터 운행 주기(슬롯). >=1 이면 엘리베이터 배치 거동 활성.
     x: float = 0.0                # 에디터 좌표(거리 자동 계산 보조)
     y: float = 0.0
 
@@ -183,6 +186,9 @@ class NodeConfig:
             "trains": [t.to_dict() for t in self.trains],
             "exit_weight": self.exit_weight,
             "throughput_cap": self.throughput_cap,
+            "group": self.group,
+            "elevator_capacity": self.elevator_capacity,
+            "elevator_cycle": self.elevator_cycle,
             "x": self.x,
             "y": self.y,
         }
@@ -202,6 +208,9 @@ class NodeConfig:
             trains=[TrainArrival.from_dict(t) for t in d.get("trains", [])],
             exit_weight=_f(d, "exit_weight", 0.0),
             throughput_cap=_f(d, "throughput_cap", 0.0),
+            group=str(d.get("group", "") or ""),
+            elevator_capacity=_f(d, "elevator_capacity", 0.0),
+            elevator_cycle=_i(d, "elevator_cycle", 0),
             x=_f(d, "x", 0.0),
             y=_f(d, "y", 0.0),
         )

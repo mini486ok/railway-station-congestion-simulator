@@ -64,6 +64,55 @@ def _inflow_corr(rec):
     return float(np.corrcoef(ia, ib)[0, 1])
 
 
+def test_elevator_batch_release():
+    # 엘리베이터: 주기 5, 용량 10 → 매 5번째 슬롯에만 10명 이하 배치 유출
+    cfg = SimConfig.from_dict({
+        "total_steps": 30, "seed": 0,
+        "nodes": [
+            {"id": "S", "kind": "entrance", "area": 50, "p_stay_base": 0.0, "dynamic_pstay": False, "n0": 100.0},
+            {"id": "EV", "kind": "elevator", "area": 20, "elevator_cycle": 5, "elevator_capacity": 10},
+            {"id": "X", "kind": "entrance", "area": 50, "p_stay_base": 0.0, "dynamic_pstay": False, "exit_weight": 1.0},
+        ],
+        "links": [{"src": "S", "dst": "EV", "distance": 1, "weight": 1.0, "tau": 1},
+                  {"src": "EV", "dst": "X", "distance": 1, "weight": 1.0, "tau": 1}],
+    })
+    sim = Simulator(cfg)
+    rec = sim.run()
+    evi = sim.model.id_to_idx["EV"]
+    out = rec.outflow[:, evi]
+    # 운행은 t%5==4 에 일어나고 유출은 다음 인덱스(t+1)에 기록 → 인덱스 5,10,15,20,25 에 10명
+    for t in range(1, 30):
+        if t >= 5 and t % 5 == 0:
+            assert 9.9 < out[t] <= 10.0 + 1e-9, f"운행 슬롯 t={t} 유출 {out[t]}"
+        else:
+            assert out[t] < 1e-9, f"비운행 슬롯 t={t} 유출 {out[t]}"
+    assert abs(sim.total_mass() - (float(sim.model.N0.sum()) + sim.cumulative_generated)) < 1e-6
+
+
+def test_group_aggregates_congestion():
+    # E_in, E_out 를 같은 물리 그룹 ENT 로 → 혼잡도는 두 노드 합으로 산출
+    cfg = SimConfig.from_dict({
+        "total_steps": 20, "seed": 0,
+        "nodes": [
+            {"id": "E_in", "kind": "entrance", "area": 20, "group": "ENT", "n0": 30.0,
+             "p_stay_base": 1.0, "dynamic_pstay": False},
+            {"id": "E_out", "kind": "entrance", "area": 20, "group": "ENT", "n0": 20.0,
+             "p_stay_base": 1.0, "dynamic_pstay": False},
+        ],
+        "links": [],
+    })
+    sim = Simulator(cfg)
+    rec = sim.run()
+    assert sim.model.has_grouping
+    assert rec.out_ids() == ["ENT"]
+    X, names, _ = rec.feature_tensor(["count", "density"], warmup=0)
+    assert X.shape[1] == 1  # 1개 물리 그룹
+    ci = names.index("count")
+    assert abs(X[0, 0, ci] - 50.0) < 1e-6  # 30 + 20
+    di = names.index("density")
+    assert abs(X[0, 0, di] - 50.0 / 40.0) < 1e-6  # 합 면적 40
+
+
 def test_common_factor_induces_spatial_correlation():
     base = {
         "total_steps": 400, "seed": 1,

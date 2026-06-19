@@ -104,6 +104,20 @@ with sync_playwright() as p:
         results.append(f"링크버튼={link_btn}, 차트컨트롤={chart_ctrl}, ⓘ개수={infotip}")
         if not (link_btn and chart_ctrl and infotip > 0):
             raise RuntimeError("new UI elements missing")
+
+        # 2차 수정: 템플릿 모달 / 랜덤 시드 / ⓘ 포털 팝오버
+        page.click("button:has-text('템플릿')")
+        page.wait_for_timeout(400)
+        tpl_ok = "내장 예제" in page.locator(".modal").inner_text()
+        page.locator(".modal-close").click()
+        page.wait_for_timeout(200)
+        dice_ok = page.locator("button:has-text('랜덤 시드')").count() > 0
+        page.locator(".infotip-btn").first.click()
+        page.wait_for_timeout(200)
+        pop_ok = page.locator(".infotip-pop").count() > 0  # body 포털에 렌더(안 잘림)
+        results.append(f"템플릿모달={tpl_ok}, 랜덤시드={dice_ok}, ⓘ포털={pop_ok}")
+        if not (tpl_ok and dice_ok and pop_ok):
+            raise RuntimeError("2nd-revision UI elements missing")
     except Exception as e:
         print("FAIL(new UI):", e)
         print("\n".join(logs[-15:]))

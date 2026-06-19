@@ -33,8 +33,11 @@ export const useStore = create((set, get) => ({
     const id = nextId("N");
     const count = get().config.nodes.length;
     const node = {
-      id, name: id, kind, area: 30, p_stay_base: 0.4, dynamic_pstay: true,
+      id, name: id, kind, group: "", area: 30, p_stay_base: 0.4, dynamic_pstay: true,
       exit_weight: kind === "entrance" ? 0.5 : 0, n0: 0,
+      throughput_cap: 0,
+      elevator_cycle: kind === "elevator" ? 5 : 0,
+      elevator_capacity: kind === "elevator" ? 10 : 0,
       // 격자 배치로 겹침 방지
       x: 140 + (count % 4) * 175, y: 110 + Math.floor(count / 4) * 125,
       source: (kind === "entrance" ? { type: "poisson", rate: 1.0, sigma: 0, profile: null } : null),

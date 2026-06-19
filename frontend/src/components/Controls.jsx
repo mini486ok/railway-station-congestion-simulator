@@ -82,6 +82,12 @@ export default function Controls() {
         <label>Δ(초/스텝)<InfoTip k="dt_seconds" /><input type="number" step="0.5" value={config.dt_seconds} onChange={(e) => setConfig({ dt_seconds: +e.target.value })} /></label>
       </div>
 
+      <div className="seed-control">
+        <label>난수 시드<InfoTip k="seed" /><input type="number" value={config.seed} onChange={(e) => setConfig({ seed: +e.target.value })} /></label>
+        <button className="dice" title="같은 구조라도 다른 결과를 위해 새 시드 생성"
+          onClick={() => setConfig({ seed: Math.floor(Math.random() * 1000000000) })}>🎲 랜덤 시드</button>
+      </div>
+
       <div className="toggles">
         <label><input type="checkbox" checked={config.dynamics.capacity_enabled}
           onChange={(e) => setDynamics({ capacity_enabled: e.target.checked, spillback_enabled: e.target.checked })} /> 용량/스필백(CTM)<InfoTip k="capacity_enabled" /></label>
@@ -99,7 +105,6 @@ export default function Controls() {
         <summary>고급 설정</summary>
         <div className="grid2">
           <label>시작시각(초)<InfoTip k="start_time_sec" /><input type="number" value={config.start_time_sec} onChange={(e) => setConfig({ start_time_sec: +e.target.value })} /></label>
-          <label>시드<InfoTip k="seed" /><input type="number" value={config.seed} onChange={(e) => setConfig({ seed: +e.target.value })} /></label>
           <label>워밍업 스텝<InfoTip k="warmup_steps" /><input type="number" value={config.warmup_steps} onChange={(e) => setConfig({ warmup_steps: +e.target.value })} /></label>
           <label>집계 간격<InfoTip k="aggregate_steps" /><input type="number" value={config.export.aggregate_steps} onChange={(e) => setExport({ aggregate_steps: +e.target.value })} /></label>
         </div>

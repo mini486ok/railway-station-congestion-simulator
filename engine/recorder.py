@@ -12,7 +12,7 @@ from typing import Dict, List, Tuple
 
 import numpy as np
 
-from .model import Model, adjacency_matrix
+from .model import Model, adjacency_matrix, group_adjacency
 
 _FORMULA_CHARS = ("=", "+", "-", "@")
 
@@ -73,6 +73,26 @@ class Recorder:
             return a[:, -1, :]
         return a.mean(axis=1)
 
+    def _level_arrays(self):
+        """노드 단위 또는 (그룹 정의 시) 물리 그룹 단위로 합산한 count/inflow/outflow/pstay/area."""
+        m = self.model
+        R = m.n_real
+        if not m.has_grouping:
+            return self.count, self.inflow, self.outflow, self.pstay, m.area[:R].copy()
+        G = len(m.group_ids)
+        M = np.zeros((R, G), dtype=np.float64)
+        M[np.arange(R), m.group_index] = 1.0
+        cnt_per = M.sum(axis=0)
+        cnt = self.count @ M       # 그룹 인원 = 멤버 합
+        inf = self.inflow @ M
+        outf = self.outflow @ M
+        pst = (self.pstay @ M) / np.maximum(cnt_per, 1e-9)  # 체류확률은 멤버 평균
+        return cnt, inf, outf, pst, m.group_area.copy()
+
+    def out_ids(self) -> List[str]:
+        m = self.model
+        return list(m.group_ids) if m.has_grouping else list(m.node_ids)
+
     def feature_tensor(
         self,
         channels: List[str],
@@ -84,20 +104,19 @@ class Recorder:
         noise_sigma: float = 0.0,
         seed: int = 12345,
     ) -> Tuple[np.ndarray, List[str], np.ndarray]:
-        """특징 텐서 X[T', R, F], 채널명 리스트, 시점 인덱스(원스텝 기준 시작 step)를 반환."""
-        R = self.model.n_real
-        area = self.model.area[:R]
-        T = self.count.shape[0]
+        """특징 텐서 X[T', N|G, F](그룹 정의 시 물리 그룹 단위), 채널명, 시점 인덱스 반환."""
+        cnt, inf, outf, pst, area = self._level_arrays()
+        T = cnt.shape[0]
         w = int(np.clip(warmup, 0, max(0, T - 1)))  # 워밍업이 전체를 넘지 않도록 클램프
         agg = max(1, int(aggregate_steps))
         # 상태량(레벨)은 합산 금지 → mean/snapshot 만 허용. 유량은 합산.
         state_method = aggregate_method if aggregate_method in ("mean", "snapshot") else "mean"
 
         base: Dict[str, np.ndarray] = {
-            "count": self.count[w:],
-            "inflow": self.inflow[w:],
-            "outflow": self.outflow[w:],
-            "p_stay": self.pstay[w:],
+            "count": cnt[w:],
+            "inflow": inf[w:],
+            "outflow": outf[w:],
+            "p_stay": pst[w:],
         }
         base["density"] = base["count"] / area
         agg_method = {
@@ -134,21 +153,38 @@ class Recorder:
         return X, names, step0
 
     # ── CSV (표준 이스케이프 + 수식 인젝션 가드) ──
+    def _group_kind(self, gk: int) -> str:
+        m = self.model
+        ks = {m.node_kinds[i] for i in range(m.n_real) if int(m.group_index[i]) == gk}
+        return next(iter(ks)) if len(ks) == 1 else "복합"
+
     def nodes_csv(self) -> str:
         m = self.model
-        rows = [
-            (m.node_ids[i], m.node_names[i], m.node_kinds[i],
-             f"{m.area[i]:.4f}", f"{m.node_x[i]:.2f}", f"{m.node_y[i]:.2f}")
-            for i in range(m.n_real)
-        ]
+        if not m.has_grouping:
+            rows = [
+                (m.node_ids[i], m.node_names[i], m.node_kinds[i],
+                 f"{m.area[i]:.4f}", f"{m.node_x[i]:.2f}", f"{m.node_y[i]:.2f}")
+                for i in range(m.n_real)
+            ]
+            return _csv(["node_id", "name", "kind", "area", "x", "y"], rows)
+        rows = [(g, g, self._group_kind(gk), f"{m.group_area[gk]:.4f}", "", "")
+                for gk, g in enumerate(m.group_ids)]
         return _csv(["node_id", "name", "kind", "area", "x", "y"], rows)
 
     def edges_csv(self) -> str:
         m = self.model
-        rows = [
-            (m.node_ids[s], m.node_ids[d], f"{w:.6f}", f"{dist:.4f}", tau)
-            for s, d, w, dist, tau in m.graph_edges
-        ]
+        if not m.has_grouping:
+            rows = [
+                (m.node_ids[s], m.node_ids[d], f"{w:.6f}", f"{dist:.4f}", tau)
+                for s, d, w, dist, tau in m.graph_edges
+            ]
+            return _csv(["src_id", "dst_id", "weight", "distance", "tau"], rows)
+        A = group_adjacency(m)
+        rows = []
+        for s in range(len(m.group_ids)):
+            for d in range(len(m.group_ids)):
+                if A[s, d] > 0:
+                    rows.append((m.group_ids[s], m.group_ids[d], f"{A[s, d]:.6f}", "", ""))
         return _csv(["src_id", "dst_id", "weight", "distance", "tau"], rows)
 
     def timeseries_csv(self, dt_seconds: float = 1.0, warmup: int = 0,
@@ -158,6 +194,7 @@ class Recorder:
             ["count", "density", "inflow", "outflow", "p_stay"],
             aggregate_steps, aggregate_method, warmup,
         )
+        ids = self.out_ids()
         header = ["step", "time_sec", "node_id"] + names
         nb, R, F = X.shape
         rows = []
@@ -165,7 +202,7 @@ class Recorder:
             step = int(step0[ti])
             tsec = step * dt_seconds
             for ni in range(R):
-                rows.append([step, f"{tsec:.1f}", m.node_ids[ni]]
+                rows.append([step, f"{tsec:.1f}", ids[ni]]
                             + [f"{X[ti, ni, fi]:.4f}" for fi in range(F)])
         return _csv(header, rows)
 
@@ -206,21 +243,36 @@ class Recorder:
             seed=cfg.seed + 999,
         )
         m = self.model
-        A = adjacency_matrix(m)
-        if m.graph_edges:
-            edge_index = np.array([[s for s, *_ in m.graph_edges],
-                                   [d for _s, d, *_ in m.graph_edges]], dtype=np.int64)
-            edge_attr = np.array([[w, dist, tau] for _s, _d, w, dist, tau in m.graph_edges],
-                                 dtype=np.float64)
+        if m.has_grouping:
+            # 물리 그룹 단위 그래프(분리 노드를 장소로 병합)
+            A = group_adjacency(m)
+            ids = list(m.group_ids)
+            kinds = [self._group_kind(gk) for gk in range(len(m.group_ids))]
+            ss, dd, attrs = [], [], []
+            for s in range(len(ids)):
+                for d in range(len(ids)):
+                    if A[s, d] > 0:
+                        ss.append(s); dd.append(d); attrs.append([A[s, d], 0.0, 0.0])
+            edge_index = np.array([ss, dd], dtype=np.int64) if ss else np.zeros((2, 0), dtype=np.int64)
+            edge_attr = np.array(attrs, dtype=np.float64) if attrs else np.zeros((0, 3), dtype=np.float64)
         else:
-            edge_index = np.zeros((2, 0), dtype=np.int64)
-            edge_attr = np.zeros((0, 3), dtype=np.float64)
+            A = adjacency_matrix(m)
+            ids = list(m.node_ids)
+            kinds = list(m.node_kinds)
+            if m.graph_edges:
+                edge_index = np.array([[s for s, *_ in m.graph_edges],
+                                       [d for _s, d, *_ in m.graph_edges]], dtype=np.int64)
+                edge_attr = np.array([[w, dist, tau] for _s, _d, w, dist, tau in m.graph_edges],
+                                     dtype=np.float64)
+            else:
+                edge_index = np.zeros((2, 0), dtype=np.int64)
+                edge_attr = np.zeros((0, 3), dtype=np.float64)
 
         payload = dict(
             X=X.astype(np.float32),
             channels=np.array(names),
-            node_ids=np.array(m.node_ids),
-            node_kinds=np.array(m.node_kinds),
+            node_ids=np.array(ids),
+            node_kinds=np.array(kinds),
             adjacency=A.astype(np.float32),
             edge_index=edge_index,
             edge_attr=edge_attr.astype(np.float32),

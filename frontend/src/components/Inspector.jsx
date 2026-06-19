@@ -61,6 +61,10 @@ function NodeEditor({ node }) {
           ))}
         </select>
       </Field>
+      <Field label="물리 그룹" info="group">
+        <input value={node.group || ""} placeholder="예: 출입구 (비우면 단독)"
+          onChange={(e) => set({ group: e.target.value })} />
+      </Field>
       <Field label="면적 (㎡)" info="area">
         <input type="number" value={node.area} onChange={(e) => set({ area: +e.target.value })} />
       </Field>
@@ -74,6 +78,27 @@ function NodeEditor({ node }) {
       <Field label="초기 인원" info="n0">
         <input type="number" value={node.n0} onChange={(e) => set({ n0: +e.target.value })} />
       </Field>
+
+      {node.kind === "gate" && (
+        <Field label="통과 처리율/스텝" info="throughput_cap">
+          <input type="number" min="0" value={node.throughput_cap || 0}
+            onChange={(e) => set({ throughput_cap: +e.target.value })} />
+        </Field>
+      )}
+      {node.kind === "elevator" && (
+        <div className="subsection">
+          <div className="sub-title">엘리베이터 거동</div>
+          <Field label="운행 주기(슬롯)" info="elevator_cycle">
+            <input type="number" min="1" value={node.elevator_cycle || 0}
+              onChange={(e) => set({ elevator_cycle: +e.target.value })} />
+          </Field>
+          <Field label="수송 용량(명)" info="elevator_capacity">
+            <input type="number" min="0" value={node.elevator_capacity || 0}
+              onChange={(e) => set({ elevator_capacity: +e.target.value })} />
+          </Field>
+          <div className="hint">주기 슬롯마다 용량만큼 한 번에 하류로 유출됩니다.</div>
+        </div>
+      )}
 
       {isEntrance && (
         <Field label="퇴장 비율(→역사 밖)" info="exit_weight">

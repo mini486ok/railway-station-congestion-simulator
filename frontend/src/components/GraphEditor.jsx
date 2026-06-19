@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import ReactFlow, { Background, Controls as RFControls, MiniMap, useNodesState, useEdgesState } from "reactflow";
 import "reactflow/dist/style.css";
 import { useStore } from "../store";
-import { KIND_COLOR, NODE_KINDS } from "../defaults";
+import { KIND_COLOR, NODE_KINDS, groupOf } from "../defaults";
 import { heatColor, round } from "../util";
 
 const kindLabel = (k) => NODE_KINDS.find((x) => x.key === k)?.label || k;
@@ -88,13 +88,29 @@ export default function GraphEditor() {
 
   // 히트맵/선택 시각화: 스냅샷·선택 변화 시 style·label 만 갱신(위치·측정 유지)
   useEffect(() => {
+    // 물리 그룹 단위 혼잡도(분리 노드는 같은 장소이므로 합산)
+    const gCount = {};
+    const gDens = {};
+    if (snapshot) {
+      const sums = {};
+      const areas = {};
+      config.nodes.forEach((nn, i) => {
+        const g = groupOf(nn);
+        sums[g] = (sums[g] || 0) + (snapshot.count[i] || 0);
+        areas[g] = (areas[g] || 0) + (nn.area || 1);
+      });
+      config.nodes.forEach((nn) => {
+        const g = groupOf(nn);
+        gCount[nn.id] = sums[g];
+        gDens[nn.id] = sums[g] / (areas[g] || 1);
+      });
+    }
     setRfNodes((nds) =>
       nds.map((node) => {
         const n = config.nodes.find((x) => x.id === node.id);
         if (!n) return node;
-        const i = idIndex[node.id];
-        const dens = snapshot ? snapshot.density[i] : 0;
-        const cnt = snapshot ? snapshot.count[i] : null;
+        const dens = snapshot ? gDens[node.id] : 0;
+        const cnt = snapshot ? gCount[node.id] : null;
         const selected = selection?.type === "node" && selection.id === node.id;
         return {
           ...node,

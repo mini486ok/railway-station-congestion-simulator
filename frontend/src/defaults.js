@@ -49,7 +49,7 @@ export function defaultConfig() {
     },
     nodes: [
       {
-        id: "E_in", name: "입구", kind: "entrance", area: 40, p_stay_base: 0.3,
+        id: "E_in", name: "입구", kind: "entrance", group: "출입구", area: 40, p_stay_base: 0.3,
         dynamic_pstay: true, exit_weight: 0, n0: 0, x: 60, y: 110,
         source: {
           type: "poisson", rate: 2.0, sigma: 0,
@@ -57,7 +57,7 @@ export function defaultConfig() {
         },
         trains: [],
       },
-      { id: "G_in", name: "진입 게이트", kind: "gate", area: 18, p_stay_base: 0.2, dynamic_pstay: true, exit_weight: 0, n0: 0, x: 300, y: 110, source: null, trains: [] },
+      { id: "G_in", name: "진입 게이트", kind: "gate", group: "게이트", area: 18, p_stay_base: 0.2, dynamic_pstay: true, exit_weight: 0, n0: 0, x: 300, y: 110, source: null, trains: [] },
       {
         id: "P1", name: "승강장(상행)", kind: "platform", area: 250, p_stay_base: 0.55,
         dynamic_pstay: true, exit_weight: 0, n0: 0, x: 560, y: 210, source: null,
@@ -68,8 +68,8 @@ export function defaultConfig() {
           { t_arrival: 1500, alight_mean: 110, alight_sigma: 15, alight_dist: "normal", dwell_steps: 30, train_capacity: 800, board_cap: 25 },
         ],
       },
-      { id: "G_out", name: "진출 게이트", kind: "gate", area: 18, p_stay_base: 0.2, dynamic_pstay: true, exit_weight: 0, n0: 0, x: 300, y: 310, source: null, trains: [] },
-      { id: "E_out", name: "출구", kind: "entrance", area: 40, p_stay_base: 0.2, dynamic_pstay: true, exit_weight: 1.0, n0: 0, x: 60, y: 310, source: null, trains: [] },
+      { id: "G_out", name: "진출 게이트", kind: "gate", group: "게이트", area: 18, p_stay_base: 0.2, dynamic_pstay: true, exit_weight: 0, n0: 0, x: 300, y: 310, source: null, trains: [] },
+      { id: "E_out", name: "출구", kind: "entrance", group: "출입구", area: 40, p_stay_base: 0.2, dynamic_pstay: true, exit_weight: 1.0, n0: 0, x: 60, y: 310, source: null, trains: [] },
     ],
     // 단방향: 입구→진입게이트→승강장 (진입) / 승강장→진출게이트→출구 (진출)
     links: [
@@ -82,6 +82,9 @@ export function defaultConfig() {
 }
 
 export const CHART_COLORS = ["#2563eb", "#dc2626", "#16a34a", "#ca8a04", "#9333ea", "#0891b2", "#db2777", "#65a30d", "#e11d48", "#0d9488"];
+
+// 물리 그룹 키(빈값이면 노드 자신). 같은 그룹 = 물리적으로 하나의 장소.
+export const groupOf = (n) => (n && n.group && n.group.trim()) || n.id;
 
 // 노드 id 기반 안정 색상(노드 추가/삭제 시 색이 밀리지 않도록)
 export function colorOf(id) {

@@ -64,6 +64,8 @@ def validate_params(cfg: SimConfig) -> List[str]:
         chk(_finite(n.exit_weight) and 0.0 <= n.exit_weight <= 1.0, f"{tag} exit_weight 는 [0,1] 이어야 합니다")
         chk(_finite(n.n0) and n.n0 >= 0, f"{tag} n0 는 0 이상이어야 합니다")
         chk(_finite(n.throughput_cap) and n.throughput_cap >= 0, f"{tag} throughput_cap 는 0 이상이어야 합니다")
+        chk(_finite(n.elevator_capacity) and n.elevator_capacity >= 0, f"{tag} elevator_capacity 는 0 이상이어야 합니다")
+        chk(int(n.elevator_cycle) >= 0, f"{tag} elevator_cycle 는 0 이상이어야 합니다")
         if n.v0 is not None:
             chk(_finite(n.v0) and n.v0 > 0, f"{tag} v0 는 0보다 커야 합니다")
         if n.source is not None:

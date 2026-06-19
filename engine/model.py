@@ -63,6 +63,19 @@ class Model:
     # 그래프 구조(real->real 링크만; 인접행렬/엣지 export 용)
     graph_edges: List[Tuple[int, int, float, float, int]]  # (s, d, weight, distance, tau)
 
+    # 엘리베이터(연속 유출 없이 주기마다 용량만큼 배치 유출)
+    elevator_idx: List[int]
+    elevator_cycle: List[int]
+    elevator_capacity: List[float]
+    elevator_links: List[np.ndarray]   # 각 엘리베이터의 출력 링크 인덱스(글로벌 src/dst 배열 기준)
+
+    # 물리 그룹(혼잡도 합산) — 같은 물리적 장소를 여러 노드로 분리해도 그룹 단위로 혼잡도 산출
+    node_group: List[str]
+    group_ids: List[str]
+    group_index: np.ndarray            # real 노드 → 그룹 위치
+    group_area: np.ndarray
+    has_grouping: bool
+
     warnings: List[str] = field(default_factory=list)
 
 
@@ -201,6 +214,33 @@ def build_model(cfg: SimConfig) -> Model:
         max_tau = 0
     ring_len = max(2, max_tau + 1)
 
+    # ── 엘리베이터: 연속 유출 없이 주기 배치 유출(출력 링크 인덱스 수집) ──
+    src_to_links: Dict[int, List[int]] = defaultdict(list)
+    for li in range(src.size):
+        src_to_links[int(src[li])].append(li)
+    elevator_idx: List[int] = []
+    elevator_cycle: List[int] = []
+    elevator_capacity: List[float] = []
+    elevator_links: List[np.ndarray] = []
+    for i in range(R):
+        if kinds[i] == "elevator" and int(nodes[i].elevator_cycle) >= 1 and src_to_links.get(i):
+            p_stay_base[i] = 1.0          # 연속 유출 없음(배치로만 유출)
+            dynamic_mask[i] = False
+            elevator_idx.append(i)
+            elevator_cycle.append(int(nodes[i].elevator_cycle))
+            elevator_capacity.append(float(nodes[i].elevator_capacity))
+            elevator_links.append(np.array(src_to_links[i], dtype=np.int64))
+
+    # ── 물리 그룹(혼잡도 합산) ──
+    node_group = [nodes[i].group if nodes[i].group else nodes[i].id for i in range(R)]
+    group_ids = list(dict.fromkeys(node_group))
+    gpos = {g: k for k, g in enumerate(group_ids)}
+    group_index = np.array([gpos[g] for g in node_group], dtype=np.int64)
+    group_area = np.zeros(len(group_ids), dtype=np.float64)
+    for i in range(R):
+        group_area[group_index[i]] += area[i]
+    has_grouping = len(group_ids) < R
+
     # ── 자체발생 source 수집 ──
     sources: List[Tuple[int, SourceSpec]] = []
     for i, n in enumerate(nodes):
@@ -245,6 +285,15 @@ def build_model(cfg: SimConfig) -> Model:
         train_sink_idx=train_sink_idx,
         platform_trains=platform_trains,
         graph_edges=graph_edges,
+        elevator_idx=elevator_idx,
+        elevator_cycle=elevator_cycle,
+        elevator_capacity=elevator_capacity,
+        elevator_links=elevator_links,
+        node_group=node_group,
+        group_ids=group_ids,
+        group_index=group_index,
+        group_area=group_area,
+        has_grouping=has_grouping,
         warnings=warnings,
     )
 
@@ -255,4 +304,15 @@ def adjacency_matrix(model: Model) -> np.ndarray:
     A = np.zeros((R, R), dtype=np.float64)
     for s, d, w, _dist, _tau in model.graph_edges:
         A[s, d] += w
+    return A
+
+
+def group_adjacency(model: Model) -> np.ndarray:
+    """물리 그룹 단위 인접행렬 [G, G] (분리 노드를 물리 장소로 병합). 그룹 내부 링크는 제외."""
+    G = len(model.group_ids)
+    A = np.zeros((G, G), dtype=np.float64)
+    for s, d, w, _dist, _tau in model.graph_edges:
+        gs, gd = int(model.group_index[s]), int(model.group_index[d])
+        if gs != gd:
+            A[gs, gd] += w
     return A

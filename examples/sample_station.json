@@ -28,7 +28,7 @@
   },
   "nodes": [
     {
-      "id": "E_in", "name": "입구", "kind": "entrance", "area": 40.0,
+      "id": "E_in", "name": "입구", "kind": "entrance", "group": "출입구", "area": 40.0,
       "p_stay_base": 0.3, "dynamic_pstay": true, "exit_weight": 0.0,
       "x": 60, "y": 110,
       "source": {
@@ -40,7 +40,7 @@
       }
     },
     {
-      "id": "G_in", "name": "진입 게이트", "kind": "gate", "area": 18.0,
+      "id": "G_in", "name": "진입 게이트", "kind": "gate", "group": "게이트", "area": 18.0,
       "p_stay_base": 0.2, "dynamic_pstay": true, "x": 300, "y": 110
     },
     {
@@ -58,11 +58,11 @@
       ]
     },
     {
-      "id": "G_out", "name": "진출 게이트", "kind": "gate", "area": 18.0,
+      "id": "G_out", "name": "진출 게이트", "kind": "gate", "group": "게이트", "area": 18.0,
       "p_stay_base": 0.2, "dynamic_pstay": true, "x": 300, "y": 310
     },
     {
-      "id": "E_out", "name": "출구", "kind": "entrance", "area": 40.0,
+      "id": "E_out", "name": "출구", "kind": "entrance", "group": "출입구", "area": 40.0,
       "p_stay_base": 0.2, "dynamic_pstay": true, "exit_weight": 1.0, "x": 60, "y": 310
     }
   ],

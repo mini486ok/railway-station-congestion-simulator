@@ -3,7 +3,7 @@ import {
   LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer, Legend, Brush, ReferenceLine,
 } from "recharts";
 import { useStore } from "../store";
-import { CHART_COLORS, colorOf } from "../defaults";
+import { colorOf, groupOf } from "../defaults";
 import { round } from "../util";
 import { useEscClose } from "./useModal";
 
@@ -67,30 +67,38 @@ export default function Dashboard() {
   const [big, setBig] = useState(false);
   useEscClose(() => setBig(false));
 
-  const nodes = config.nodes;
-  const areaById = useMemo(() => {
-    const m = {};
-    nodes.forEach((n) => (m[n.id] = n.area || 1));
-    return m;
-  }, [nodes]);
+  // 물리 그룹 단위 계열(분리 노드는 같은 장소이므로 합산). 그룹 미사용 시 노드 그대로.
+  const series = useMemo(() => {
+    const map = new Map();
+    config.nodes.forEach((n) => {
+      const g = groupOf(n);
+      if (!map.has(g)) map.set(g, { id: g, name: g === n.id ? (n.name || n.id) : g, members: [], area: 0 });
+      const e = map.get(g);
+      e.members.push(n.id);
+      e.area += n.area || 1;
+    });
+    return [...map.values()];
+  }, [config.nodes]);
 
   const data = useMemo(() => {
-    if (metric !== "density") return history;
     return history.map((row) => {
       const r = { t: row.t };
-      nodes.forEach((n) => {
-        if (row[n.id] != null) r[n.id] = row[n.id] / (areaById[n.id] || 1);
+      series.forEach((s) => {
+        let sum = 0;
+        let any = false;
+        s.members.forEach((id) => { if (row[id] != null) { sum += row[id]; any = true; } });
+        if (any) r[s.id] = metric === "density" ? sum / (s.area || 1) : sum;
       });
       return r;
     });
-  }, [history, metric, nodes, areaById]);
+  }, [history, series, metric]);
 
   const pct = snapshot ? Math.min(100, (snapshot.t / config.total_steps) * 100) : 0;
   const toggle = (id) => setHidden((h) => ({ ...h, [id]: !h[id] }));
-  const allHidden = nodes.length > 0 && nodes.every((n) => hidden[n.id]);
+  const allHidden = series.length > 0 && series.every((s) => hidden[s.id]);
 
   const chartProps = {
-    data, nodes, hidden, metric, dt: config.dt_seconds, startSec: config.start_time_sec,
+    data, nodes: series, hidden, metric, dt: config.dt_seconds, startSec: config.start_time_sec,
     rhoCap: config.dynamics.rho_cap, timeAxis,
   };
 
@@ -104,15 +112,15 @@ export default function Dashboard() {
         <button className={timeAxis === "step" ? "on" : ""} aria-pressed={timeAxis === "step"} onClick={() => setTimeAxis("step")}>스텝</button>
         <button className={timeAxis === "clock" ? "on" : ""} aria-pressed={timeAxis === "clock"} onClick={() => setTimeAxis("clock")}>시각</button>
       </div>
-      <button className="mini" onClick={() => setHidden(allHidden ? {} : Object.fromEntries(nodes.map((n) => [n.id, true])))}>
+      <button className="mini" onClick={() => setHidden(allHidden ? {} : Object.fromEntries(series.map((s) => [s.id, true])))}>
         {allHidden ? "모두 표시" : "모두 숨김"}
       </button>
       <div className="node-toggles">
-        {nodes.map((n, i) => (
-          <button key={n.id} className={"ntoggle" + (hidden[n.id] ? " off" : "")} aria-pressed={!hidden[n.id]}
-            style={{ borderColor: colorOf(n.id) }} onClick={() => toggle(n.id)}>
-            <span className="dot" style={{ background: colorOf(n.id) }} />
-            {n.name || n.id}
+        {series.map((s) => (
+          <button key={s.id} className={"ntoggle" + (hidden[s.id] ? " off" : "")} aria-pressed={!hidden[s.id]}
+            style={{ borderColor: colorOf(s.id) }} onClick={() => toggle(s.id)}>
+            <span className="dot" style={{ background: colorOf(s.id) }} />
+            {s.name}
           </button>
         ))}
       </div>
