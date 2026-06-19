@@ -31,6 +31,7 @@ class Model:
     node_ids: List[str]
     node_names: List[str]
     node_kinds: List[str]              # real 노드 종류
+    node_direction: List[str]          # 양방향 방향 라벨(export/UI 메타)
     node_x: List[float]                # 에디터 좌표(export 보존)
     node_y: List[float]
     id_to_idx: Dict[str, int]
@@ -245,6 +246,20 @@ def build_model(cfg: SimConfig) -> Model:
         group_area[group_index[i]] += area[i]
     has_grouping = len(group_ids) < R
 
+    # 같은 물리 그룹 내부를 직접 잇는 링크 경고: 그룹 단위 출력 시 inflow/outflow 에 내부 이동이
+    # 포함되어 그룹 경계 그래프(group_adjacency 는 내부 링크 제외)와 의미가 어긋난다(진입/진출 분리 권장).
+    intra = []
+    for s, d, *_ in graph_edges:
+        if group_index[s] == group_index[d]:
+            intra.append((nodes[s].id, nodes[d].id))
+    if intra:
+        ex = ", ".join(f"{a}->{b}" for a, b in intra[:3])
+        more = "…" if len(intra) > 3 else ""
+        warnings.append(
+            f"같은 물리 그룹 내부를 직접 잇는 링크가 있습니다({ex}{more}) — "
+            f"그룹 단위 출력에서 inflow/outflow 에 내부 이동이 포함됩니다(진입/진출을 분리하세요)"
+        )
+
     # ── 자체발생 source 수집 ──
     sources: List[Tuple[int, SourceSpec]] = []
     for i, n in enumerate(nodes):
@@ -276,6 +291,7 @@ def build_model(cfg: SimConfig) -> Model:
         node_ids=[n.id for n in nodes],
         node_names=[n.name for n in nodes],
         node_kinds=kinds,
+        node_direction=[str(n.direction or "") for n in nodes],
         node_x=[float(n.x) for n in nodes],
         node_y=[float(n.y) for n in nodes],
         id_to_idx=id_to_idx,
@@ -322,8 +338,33 @@ def adjacency_matrix(model: Model) -> np.ndarray:
     return A
 
 
+def node_edge_attrs(model: Model):
+    """노드 단위 엣지 속성: {(s,d): (weight합, 거리 가중평균, tau 가중평균)}. 동일 (s,d) 다중 링크 집계.
+
+    adjacency_matrix 는 동일 (s,d) weight 를 합산하므로, edge_index/edge_attr 도 같은 기준으로
+    집계해 인접행렬과 엣지 리스트의 정합성을 보장한다(자기루프 포함).
+    """
+    acc: Dict[Tuple[int, int], List[float]] = {}
+    for s, d, w, dist, tau in model.graph_edges:
+        a = acc.get((s, d))
+        if a is None:
+            acc[(s, d)] = [w, w * dist, w * float(tau)]
+        else:
+            a[0] += w; a[1] += w * dist; a[2] += w * float(tau)
+    out: Dict[Tuple[int, int], Tuple[float, float, float]] = {}
+    for (s, d), (wsum, wdist, wtau) in acc.items():
+        if wsum <= 0:           # weight 0 링크는 인접행렬(>0)과 정합되도록 엣지 리스트에서 제외
+            continue
+        out[(s, d)] = (wsum, wdist / wsum, wtau / wsum)
+    return out
+
+
 def group_adjacency(model: Model) -> np.ndarray:
-    """물리 그룹 단위 인접행렬 [G, G] (분리 노드를 물리 장소로 병합). 그룹 내부 링크는 제외."""
+    """물리 그룹 단위 인접행렬 [G, G] (분리 노드를 물리 장소로 병합). 그룹 내부 링크는 제외.
+
+    주의: 그룹 인접 weight 는 멤버 엣지 weight 합이라 행 합이 1로 정규화되지 않는다(멤버 수 비례).
+    노드 단위의 '출력 weight 합=1' 불변식은 인원 보존용이며, STGCN 은 인접행렬을 자체 정규화한다.
+    """
     G = len(model.group_ids)
     A = np.zeros((G, G), dtype=np.float64)
     for s, d, w, _dist, _tau in model.graph_edges:
@@ -331,3 +372,27 @@ def group_adjacency(model: Model) -> np.ndarray:
         if gs != gd:
             A[gs, gd] += w
     return A
+
+
+def group_edge_attrs(model: Model):
+    """물리 그룹 간 엣지 속성: {(gs,gd): (weight합, 거리 가중평균, tau 가중평균)}. 그룹 내부 링크 제외.
+
+    노드 단위 edge_attr=[weight, distance, tau] 와 동일한 스키마를 그룹 단위에서도 채우기 위해
+    멤버 엣지의 distance/tau 를 weight 가중평균으로 집계한다(노드/그룹 출력의 피처 스키마 일치).
+    """
+    acc: Dict[Tuple[int, int], List[float]] = {}
+    for s, d, w, dist, tau in model.graph_edges:
+        gs, gd = int(model.group_index[s]), int(model.group_index[d])
+        if gs == gd:
+            continue
+        a = acc.get((gs, gd))
+        if a is None:
+            acc[(gs, gd)] = [w, w * dist, w * float(tau)]
+        else:
+            a[0] += w; a[1] += w * dist; a[2] += w * float(tau)
+    out: Dict[Tuple[int, int], Tuple[float, float, float]] = {}
+    for (gs, gd), (wsum, wdist, wtau) in acc.items():
+        if wsum <= 0:           # weight 0 그룹 엣지는 group_adjacency(>0)와 정합되도록 제외
+            continue
+        out[(gs, gd)] = (wsum, wdist / wsum, wtau / wsum)
+    return out

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer, Legend, Brush, ReferenceLine,
 } from "recharts";
@@ -58,6 +58,7 @@ function ChartPanel({ data, nodes, hidden, metric, dt, startSec, rhoCap, timeAxi
 
 export default function Dashboard() {
   const config = useStore((s) => s.config);
+  const setExport = useStore((s) => s.setExport);
   const snapshot = useStore((s) => s.snapshot);
   const history = useStore((s) => s.history);
 
@@ -67,8 +68,17 @@ export default function Dashboard() {
   const [big, setBig] = useState(false);
   useEscClose(() => setBig(false), big); // 크게보기 모달이 열렸을 때만 활성화
 
-  // 물리 그룹 단위 계열(분리 노드는 같은 장소이므로 합산). 그룹 미사용 시 노드 그대로.
+  // 분석/출력 단위(노드별 | 물리 그룹별) — export.output_level 과 공유(차트·히트맵·export 일관)
+  const level = config.export?.output_level || "group";
+  const setLevel = (v) => setExport({ output_level: v });
+  // 단위 전환 시 숨김 토글 초기화(그룹명 키 ↔ 노드 id 키 불일치로 차트가 어긋나는 것 방지)
+  useEffect(() => { setHidden({}); }, [level]);
+
+  // 분석 단위에 따른 계열. group: 분리 노드를 같은 장소로 합산 / node: 각 노드 그대로.
   const series = useMemo(() => {
+    if (level === "node") {
+      return config.nodes.map((n) => ({ id: n.id, name: n.name || n.id, members: [n.id], area: n.area || 1 }));
+    }
     const map = new Map();
     config.nodes.forEach((n) => {
       const g = groupOf(n);
@@ -78,7 +88,7 @@ export default function Dashboard() {
       e.area += n.area || 1;
     });
     return [...map.values()];
-  }, [config.nodes]);
+  }, [config.nodes, level]);
 
   const data = useMemo(() => {
     return history.map((row) => {
@@ -111,6 +121,10 @@ export default function Dashboard() {
       <div className="seg" role="group" aria-label="가로축">
         <button className={timeAxis === "step" ? "on" : ""} aria-pressed={timeAxis === "step"} onClick={() => setTimeAxis("step")}>스텝</button>
         <button className={timeAxis === "clock" ? "on" : ""} aria-pressed={timeAxis === "clock"} onClick={() => setTimeAxis("clock")}>시각</button>
+      </div>
+      <div className="seg" role="group" aria-label="분석·출력 단위" title="혼잡도를 노드별 또는 물리 그룹별로 분석·출력합니다(차트·히트맵·내보내기 공통)">
+        <button className={level === "group" ? "on" : ""} aria-pressed={level === "group"} onClick={() => setLevel("group")}>물리 그룹별</button>
+        <button className={level === "node" ? "on" : ""} aria-pressed={level === "node"} onClick={() => setLevel("node")}>노드별</button>
       </div>
       <button className="mini" onClick={() => setHidden(allHidden ? {} : Object.fromEntries(series.map((s) => [s.id, true])))}>
         {allHidden ? "모두 표시" : "모두 숨김"}

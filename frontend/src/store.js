@@ -1,5 +1,15 @@
 import { create } from "zustand";
-import { defaultConfig } from "./defaults";
+import { defaultConfig, DIRECTION_LABELS, GROUP_BASE } from "./defaults";
+
+// 단일 노드(공간 전체) 기본 면적
+const AREA_BY_KIND = { platform: 250, corridor: 100, gate: 18, stairs: 30, escalator: 30, elevator: 12, entrance: 40 };
+// 양방향 쌍의 '방향당' 면적 — 같은 물리 공간을 둘이 나눠 쓰는 종류는 절반(합=실제 면적),
+// 출입구(별도 출입문)·게이트(별도 개찰 뱅크)는 방향별로 독립 공간이라 각자 면적 유지.
+const PAIR_AREA = { entrance: 40, gate: 18, corridor: 50, stairs: 15, escalator: 15, elevator: 6, platform: 130 };
+const platSchedule = (alight) => ({
+  first_arrival: 100, headway: 300, num_trains: 0, alight_mean: alight, alight_sigma: 15,
+  alight_dist: "normal", dwell_steps: 30, train_capacity: 800, board_cap: 25, onboard_load: 0, delay_std: 0,
+});
 
 let _seq = 100;
 const nextId = (prefix) => `${prefix}${_seq++}`;
@@ -74,7 +84,7 @@ export const useStore = create((set, get) => ({
     const id = nextId("N");
     const count = get().config.nodes.length;
     const node = {
-      id, name: id, kind, group: "", area: 30, p_stay_base: 0.4, dynamic_pstay: true,
+      id, name: id, kind, direction: "", group: "", area: AREA_BY_KIND[kind] || 30, p_stay_base: 0.4, dynamic_pstay: true,
       exit_weight: kind === "entrance" ? 0.5 : 0, n0: 0,
       throughput_cap: 0,
       elevator_cycle: kind === "elevator" ? 5 : 0,
@@ -84,12 +94,48 @@ export const useStore = create((set, get) => ({
       source: (kind === "entrance" ? { type: "poisson", rate: 1.0, sigma: 0, profile: null } : null),
       trains: [],
       platform_role: "both",
-      train_schedule: kind === "platform"
-        ? { first_arrival: 100, headway: 300, num_trains: 0, alight_mean: 100, alight_sigma: 15,
-            alight_dist: "normal", dwell_steps: 30, train_capacity: 800, board_cap: 25, onboard_load: 0, delay_std: 0 }
-        : null,
+      train_schedule: kind === "platform" ? platSchedule(100) : null,
     };
     set((s) => ({ ...pushPast(s), config: { ...s.config, nodes: [...s.config.nodes, node] }, selection: { type: "node", id } }));
+  },
+
+  // 양방향 쌍 추가: 진입/진출(또는 하차/승차 등) 2노드를 같은 물리 그룹으로 한 번에 생성.
+  addNodePair: (kind = "corridor") => {
+    const nodes = get().config.nodes;
+    const [dirA, dirB] = DIRECTION_LABELS[kind] || ["정방향", "역방향"];
+    const baseLabel = GROUP_BASE[kind] || "장소";
+    // 자동 그룹명은 전역(모든 기존 그룹) 유니크 — 엔진이 group 문자열만으로 병합하므로
+    // 다른 종류의 동일 그룹명과 우발 병합을 막는다(의도적 병합은 속성창에서 수동으로).
+    const existing = new Set(nodes.map((n) => (n.group || "").trim()).filter(Boolean));
+    let group = baseLabel, k = 1;
+    while (existing.has(group)) { k += 1; group = `${baseLabel}${k}`; }
+    const idA = nextId("N"), idB = nextId("N");
+    // 기존 노드(단일·쌍·삭제 후 재추가 무관) 오른쪽 새 열에 진입(위)/진출(아래)로 배치 → 겹침 없음
+    const maxX = nodes.length ? Math.max(...nodes.map((n) => n.x || 0)) : -45;
+    const x = maxX + 195;
+    const yA = 90, yB = 240;
+    const area = PAIR_AREA[kind] || 30;
+    const evCyc = kind === "elevator" ? 8 : 0;
+    const evCap = kind === "elevator" ? 6 : 0;  // 방향당 절반 용량(쌍 합 ≈ 승강기 1대)
+    const mk = (id, dir, y, over) => ({
+      id, name: `${group}·${dir}`, kind, direction: dir, group, area,   // 표시명은 유니크 그룹 기반
+      p_stay_base: 0.4, dynamic_pstay: true, exit_weight: 0, n0: 0, throughput_cap: 0,
+      elevator_cycle: evCyc, elevator_capacity: evCap,
+      x, y, source: null, trains: [], platform_role: "both", train_schedule: null, ...over,
+    });
+    let A, B;
+    if (kind === "entrance") {
+      A = mk(idA, dirA, yA, { p_stay_base: 0.3, source: { type: "poisson", rate: 1.0, sigma: 0, profile: null } });
+      B = mk(idB, dirB, yB, { p_stay_base: 0.2, exit_weight: 1.0 });
+    } else if (kind === "platform") {
+      // dirA=하차(유입), dirB=승차(유출)
+      A = mk(idA, dirA, yA, { p_stay_base: 0.45, platform_role: "alight", train_schedule: platSchedule(110) });
+      B = mk(idB, dirB, yB, { p_stay_base: 0.55, platform_role: "board", train_schedule: platSchedule(0) });
+    } else {
+      A = mk(idA, dirA, yA, {});
+      B = mk(idB, dirB, yB, {});
+    }
+    set((s) => ({ ...pushPast(s), config: { ...s.config, nodes: [...s.config.nodes, A, B] }, selection: { type: "node", id: idA } }));
   },
   updateNode: (id, patch) =>
     set((s) => ({

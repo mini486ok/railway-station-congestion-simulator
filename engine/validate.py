@@ -48,6 +48,7 @@ def validate_params(cfg: SimConfig) -> List[str]:
     chk(int(e.aggregate_steps) >= 1, "export.aggregate_steps 는 1 이상이어야 합니다")
     chk(int(e.aggregate_steps) <= int(cfg.total_steps) + 1, "export.aggregate_steps 는 total_steps 이하여야 합니다(시간축 오염 방지)")
     chk(e.aggregate_method in ("mean", "snapshot"), "export.aggregate_method 는 mean 또는 snapshot 이어야 합니다(상태량 합산 방지)")
+    chk(e.output_level in ("node", "group"), "export.output_level 는 node 또는 group 이어야 합니다")
     chk(_finite(e.noise_sigma) and e.noise_sigma >= 0, "export.noise_sigma 는 0 이상 유한수여야 합니다")
 
     # 수요 다양성

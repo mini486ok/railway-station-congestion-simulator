@@ -111,15 +111,17 @@ def run_all() -> str:
 def export_csv(kind: str = "timeseries") -> str:
     assert _sim is not None and _cfg is not None
     rec = _sim.recorder
+    group_level = (_cfg.export.output_level != "node")
     if kind == "nodes":
-        return rec.nodes_csv()
+        return rec.nodes_csv(group_level)
     if kind == "edges":
-        return rec.edges_csv()
+        return rec.edges_csv(group_level)
     if kind == "departures":
-        return rec.departures_csv(_cfg.dt_seconds, _cfg.warmup_steps, _cfg.export.aggregate_steps)
+        return rec.departures_csv(_cfg.dt_seconds, _cfg.warmup_steps, _cfg.export.aggregate_steps, group_level)
     return rec.timeseries_csv(
         _cfg.dt_seconds, _cfg.warmup_steps,
         _cfg.export.aggregate_steps, _cfg.export.aggregate_method,
+        group_level=group_level,
     )
 
 

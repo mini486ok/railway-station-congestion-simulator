@@ -30,14 +30,16 @@ def export_run(cfg: SimConfig, out_dir: str) -> dict:
     os.makedirs(out_dir, exist_ok=True)
     sim = Simulator(cfg)
     rec = sim.run()
+    group_level = (cfg.export.output_level != "node")  # 노드별/물리 그룹별 출력 단위
 
-    _write(os.path.join(out_dir, "nodes.csv"), rec.nodes_csv())
-    _write(os.path.join(out_dir, "edges.csv"), rec.edges_csv())
+    _write(os.path.join(out_dir, "nodes.csv"), rec.nodes_csv(group_level))
+    _write(os.path.join(out_dir, "edges.csv"), rec.edges_csv(group_level))
     _write(os.path.join(out_dir, "timeseries.csv"),
            rec.timeseries_csv(cfg.dt_seconds, cfg.warmup_steps,
-                              cfg.export.aggregate_steps, cfg.export.aggregate_method))
+                              cfg.export.aggregate_steps, cfg.export.aggregate_method,
+                              group_level=group_level))
     _write(os.path.join(out_dir, "departures.csv"),
-           rec.departures_csv(cfg.dt_seconds, cfg.warmup_steps, cfg.export.aggregate_steps))
+           rec.departures_csv(cfg.dt_seconds, cfg.warmup_steps, cfg.export.aggregate_steps, group_level))
     _write(os.path.join(out_dir, "X.npz"), rec.npz_bytes(cfg))
     _write(os.path.join(out_dir, "config.json"), cfg.to_json())
 

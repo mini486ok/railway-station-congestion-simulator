@@ -16,18 +16,21 @@ function UsageGuide() {
 
       <h4>① 역사 그래프 만들기</h4>
       <ul>
-        <li><b>노드 추가</b>: 왼쪽 위 "노드 추가"에서 종류(출입구/통로/계단/…/승강장)를 누르면 노드가 생깁니다.</li>
+        <li><b>양방향 쌍 추가</b>: 툴바의 추가 모드가 <b>"양방향 쌍"</b>이면 종류(출입구/통로/…/승강장)를 누를 때
+          서로 반대 방향 2노드(예: 입구+출구, 진입+진출)가 <b>같은 물리 그룹</b>으로 한 번에 생깁니다.
+          (모드를 <b>"단일"</b>로 바꾸면 노드 1개만 추가됩니다.)</li>
         <li><b>링크 연결</b>: 툴바의 <b>"링크 연결"</b> 버튼을 누른 뒤 <b>출발 노드 → 도착 노드</b> 순으로 클릭하면 단방향 화살표가 생깁니다. (노드 테두리를 드래그해도 됩니다.)</li>
-        <li><b>속성 편집</b>: 노드나 링크를 클릭하면 오른쪽 "속성"에서 면적·체류확률·거리·가중치 등을 바꿀 수 있습니다. 각 항목의 <span className="ibadge">i</span> 를 누르면 설명이 나옵니다.</li>
+        <li><b>속성 편집</b>: 노드나 링크를 클릭하면 오른쪽 "속성"에서 방향·물리 그룹·면적·체류확률·거리·가중치 등을 바꿀 수 있습니다. 각 항목의 <span className="ibadge">i</span> 를 누르면 설명이 나옵니다.</li>
         <li><b>이동/삭제</b>: 노드를 드래그해 배치하고, 속성 창의 "삭제"로 지웁니다.</li>
       </ul>
 
-      <h4>② 흐름의 방향성 · 물리 그룹</h4>
+      <h4>② 양방향 2노드 모델링 · 물리 그룹</h4>
       <p>
-        링크는 <b>단방향</b>입니다. 들어오는 사람과 나가는 사람이 섞이지 않게 하려면, 진입 경로와
-        진출 경로를 <b>따로</b> 그리세요. (예: 입구→진입게이트→<b>승차</b> / <b>하차</b>→진출게이트→출구).
-        물리적으로 하나인 장소를 방향성 때문에 여러 노드로 나눴다면, 각 노드의 <b>"물리 그룹"</b> 에
-        같은 이름을 주세요 — 혼잡도가 하나의 장소로 합산됩니다. 기본 예제가 이렇게 구성되어 있습니다.
+        링크는 <b>단방향</b>이라, 들어오는 사람과 나가는 사람이 섞이지 않습니다. 그래서 모든 물리 공간
+        (출입구·통로·게이트·계단·에스컬레이터·엘리베이터·승강장)은 <b>서로 다른 방향의 2노드</b>로 만들고
+        진입 경로와 진출 경로를 따로 그립니다. (예: 입구→대합실→게이트→계단→<b>승차</b> / <b>하차</b>→계단→게이트→대합실→출구).
+        두 노드에 같은 <b>"물리 그룹"</b> 이름을 주면 혼잡도가 <b>하나의 물리적 장소</b>로 합산됩니다.
+        기본 예제가 이렇게 구성되어 있고, <b>"양방향 쌍 추가"</b>가 이 작업을 자동으로 해 줍니다.
       </p>
 
       <h4>③ 발생·열차 설정</h4>
@@ -49,7 +52,9 @@ function UsageGuide() {
       <h4>⑤ 결과 보기 & 내보내기</h4>
       <ul>
         <li>아래 <b>대시보드</b>에서 지점별 혼잡도 추이를, 그래프에서 노드 색(밀도 히트맵)을 봅니다.</li>
-        <li>"데이터셋 내보내기"에서 CSV/X.npz를 내려받습니다. (각 파일 설명은 위 "출력 파일 설명" 탭 참고)</li>
+        <li><b>분석 단위</b>(<b>물리 그룹별</b> / <b>노드별</b>): 같은 그룹의 양방향 2노드를 하나의 장소로 합산해 볼지,
+          노드 하나하나로 볼지 고릅니다. 차트·히트맵·내보내기에 모두 같이 적용됩니다.</li>
+        <li>"데이터셋 내보내기"에서 CSV/X.npz를 내려받습니다. 위 ‘분석 단위’가 그대로 출력 단위가 됩니다(그룹별=G개 노드, 노드별=N개 노드). (각 파일 설명은 "출력 파일 설명" 탭 참고)</li>
       </ul>
     </div>
   );
@@ -84,8 +89,9 @@ step,time_sec,node_id,count,density,inflow,outflow,p_stay{"\n"}
 
       <h4><Code>nodes.csv</Code> / <Code>edges.csv</Code> — 그래프 구조</h4>
       <ul>
-        <li><b>nodes.csv</b>: node_id, name, kind, area …</li>
+        <li><b>nodes.csv</b>: node_id, name, kind, group, direction, area … (노드별 출력 시 group·direction 열로 물리 그룹·방향을 확인)</li>
         <li><b>edges.csv</b>: src_id, dst_id, weight, distance, tau (방향성 링크)</li>
+        <li><b>출력 단위</b>: ‘물리 그룹별’이면 같은 그룹의 양방향 노드가 1개로 합쳐져 행/노드 수가 줄고 adjacency도 그룹 그래프가 됩니다. ‘노드별’이면 모든 노드를 그대로 내보냅니다.</li>
       </ul>
 
       <h4><Code>X.npz</Code> — STGCN 직결 텐서(가장 중요)</h4>
@@ -94,8 +100,9 @@ step,time_sec,node_id,count,density,inflow,outflow,p_stay{"\n"}
         <li><Code>X</Code> [T, N, F]: 특징 텐서 (시점 × 노드 × 채널). 채널 예: count, density, inflow, outflow, (옵션)count_noisy</li>
         <li><Code>adjacency</Code> [N, N]: 인접행렬(그래프 구조) — STGCN 그래프 입력</li>
         <li><Code>edge_index</Code> [2, M], <Code>edge_attr</Code> [M, 3]: 엣지 리스트 + (weight, distance, tau)</li>
-        <li><Code>node_ids</Code>, <Code>node_kinds</Code>, <Code>channels</Code>: 메타데이터</li>
-        <li><Code>count_mean</Code>, <Code>count_std</Code> [N]: 노드별 정규화 통계</li>
+        <li><Code>node_ids</Code>, <Code>node_kinds</Code>, <Code>channels</Code>, <Code>output_level</Code>: 메타데이터(출력 단위 node/group)</li>
+        <li><Code>feat_mean</Code>, <Code>feat_std</Code> [N, F]: 채널별 정규화 통계(+ 하위호환 <Code>count_mean/std</Code>)</li>
+        <li><Code>group_members</Code> 또는 <Code>node_direction</Code>/<Code>node_group</Code>: 그룹↔노드·방향 매핑(출력 단위에 따라)</li>
       </ul>
       <pre className="sample">
 import numpy as np{"\n"}

@@ -1,5 +1,5 @@
 {
-  "name": "샘플 역사 (입구→진입게이트→승차 / 하차→진출게이트→출구)",
+  "name": "샘플 역사 (양방향 2노드 · 물리 그룹)",
   "schema_version": 1,
   "engine_version": "0.1.0",
   "dt_seconds": 1.0,
@@ -21,61 +21,50 @@
   "export": {
     "aggregate_steps": 10,
     "aggregate_method": "mean",
+    "output_level": "group",
     "noise_enabled": true,
     "noise_model": "gaussian",
     "noise_sigma": 2.0,
     "feature_channels": ["count", "density", "inflow", "outflow"]
   },
+  "demand": { "day_variability_sigma": 0.1, "common_factor_phi": 0.75, "common_factor_sigma": 0.1 },
   "nodes": [
     {
-      "id": "E_in", "name": "입구", "kind": "entrance", "group": "출입구", "area": 40.0,
-      "p_stay_base": 0.3, "dynamic_pstay": true, "exit_weight": 0.0,
-      "x": 60, "y": 110,
+      "id": "E_in", "name": "입구", "kind": "entrance", "direction": "입구", "group": "출입구", "area": 40.0,
+      "p_stay_base": 0.3, "dynamic_pstay": true, "exit_weight": 0.0, "x": 60, "y": 90,
       "source": {
         "type": "poisson", "rate": 2.0,
-        "profile": {
-          "hours": [0, 6, 8, 9, 12, 18, 19, 23],
-          "multipliers": [0.2, 0.6, 2.5, 1.5, 1.0, 2.2, 1.4, 0.4]
-        }
+        "profile": { "hours": [0, 6, 8, 9, 12, 18, 19, 23], "multipliers": [0.2, 0.6, 2.5, 1.5, 1.0, 2.2, 1.4, 0.4] }
       }
     },
+    { "id": "E_out", "name": "출구", "kind": "entrance", "direction": "출구", "group": "출입구", "area": 40.0, "p_stay_base": 0.2, "dynamic_pstay": true, "exit_weight": 1.0, "x": 60, "y": 300 },
+    { "id": "C_in", "name": "대합실·진입", "kind": "corridor", "direction": "진입", "group": "대합실", "area": 80.0, "p_stay_base": 0.4, "dynamic_pstay": true, "x": 240, "y": 90 },
+    { "id": "C_out", "name": "대합실·진출", "kind": "corridor", "direction": "진출", "group": "대합실", "area": 80.0, "p_stay_base": 0.4, "dynamic_pstay": true, "x": 240, "y": 300 },
+    { "id": "G_in", "name": "진입 게이트", "kind": "gate", "direction": "진입", "group": "게이트", "area": 18.0, "p_stay_base": 0.2, "dynamic_pstay": true, "throughput_cap": 40.0, "x": 420, "y": 90 },
+    { "id": "G_out", "name": "진출 게이트", "kind": "gate", "direction": "진출", "group": "게이트", "area": 18.0, "p_stay_base": 0.2, "dynamic_pstay": true, "throughput_cap": 40.0, "x": 420, "y": 300 },
+    { "id": "T_dn", "name": "계단·하행", "kind": "stairs", "direction": "하행", "group": "계단", "area": 16.0, "p_stay_base": 0.45, "dynamic_pstay": true, "x": 600, "y": 90 },
+    { "id": "T_up", "name": "계단·상행", "kind": "stairs", "direction": "상행", "group": "계단", "area": 16.0, "p_stay_base": 0.5, "dynamic_pstay": true, "x": 600, "y": 300 },
     {
-      "id": "G_in", "name": "진입 게이트", "kind": "gate", "group": "게이트", "area": 18.0,
-      "p_stay_base": 0.2, "dynamic_pstay": true, "x": 300, "y": 110
-    },
-    {
-      "id": "P_board", "name": "승강장1·승차", "kind": "platform", "group": "승강장1", "area": 250.0,
-      "p_stay_base": 0.55, "dynamic_pstay": true, "x": 560, "y": 110,
+      "id": "P_board", "name": "승강장1·승차", "kind": "platform", "direction": "승차", "group": "승강장1", "area": 130.0,
+      "p_stay_base": 0.55, "dynamic_pstay": true, "x": 780, "y": 90,
       "platform_role": "board",
-      "train_schedule": {
-        "first_arrival": 100, "headway": 300, "num_trains": 0,
-        "alight_mean": 0, "alight_sigma": 0, "alight_dist": "normal",
-        "dwell_steps": 30, "train_capacity": 800, "board_cap": 25
-      }
+      "train_schedule": { "first_arrival": 100, "headway": 300, "num_trains": 0, "alight_mean": 0, "alight_sigma": 0, "alight_dist": "normal", "dwell_steps": 30, "train_capacity": 800, "board_cap": 25 }
     },
     {
-      "id": "P_alight", "name": "승강장1·하차", "kind": "platform", "group": "승강장1", "area": 250.0,
-      "p_stay_base": 0.45, "dynamic_pstay": true, "x": 560, "y": 320,
+      "id": "P_alight", "name": "승강장1·하차", "kind": "platform", "direction": "하차", "group": "승강장1", "area": 130.0,
+      "p_stay_base": 0.45, "dynamic_pstay": true, "x": 780, "y": 300,
       "platform_role": "alight",
-      "train_schedule": {
-        "first_arrival": 100, "headway": 300, "num_trains": 0,
-        "alight_mean": 110, "alight_sigma": 15, "alight_dist": "normal",
-        "dwell_steps": 30, "train_capacity": 800, "board_cap": 25
-      }
-    },
-    {
-      "id": "G_out", "name": "진출 게이트", "kind": "gate", "group": "게이트", "area": 18.0,
-      "p_stay_base": 0.2, "dynamic_pstay": true, "x": 300, "y": 320
-    },
-    {
-      "id": "E_out", "name": "출구", "kind": "entrance", "group": "출입구", "area": 40.0,
-      "p_stay_base": 0.2, "dynamic_pstay": true, "exit_weight": 1.0, "x": 60, "y": 320
+      "train_schedule": { "first_arrival": 100, "headway": 300, "num_trains": 0, "alight_mean": 110, "alight_sigma": 15, "alight_dist": "normal", "dwell_steps": 30, "train_capacity": 800, "board_cap": 25 }
     }
   ],
   "links": [
-    {"src": "E_in", "dst": "G_in", "distance": 15.0, "weight": 1.0},
-    {"src": "G_in", "dst": "P_board", "distance": 35.0, "weight": 1.0},
-    {"src": "P_alight", "dst": "G_out", "distance": 35.0, "weight": 1.0},
-    {"src": "G_out", "dst": "E_out", "distance": 15.0, "weight": 1.0}
+    {"src": "E_in", "dst": "C_in", "distance": 15.0, "weight": 1.0},
+    {"src": "C_in", "dst": "G_in", "distance": 25.0, "weight": 1.0},
+    {"src": "G_in", "dst": "T_dn", "distance": 20.0, "weight": 1.0},
+    {"src": "T_dn", "dst": "P_board", "distance": 25.0, "weight": 1.0},
+    {"src": "P_alight", "dst": "T_up", "distance": 25.0, "weight": 1.0},
+    {"src": "T_up", "dst": "G_out", "distance": 20.0, "weight": 1.0},
+    {"src": "G_out", "dst": "C_out", "distance": 25.0, "weight": 1.0},
+    {"src": "C_out", "dst": "E_out", "distance": 15.0, "weight": 1.0}
   ]
 }

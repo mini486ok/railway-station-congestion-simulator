@@ -232,6 +232,7 @@ class NodeConfig:
     id: str
     name: str = ""
     kind: str = "corridor"
+    direction: str = ""           # 양방향 모델링 방향 라벨(예: 입구/출구, 상행/하행, 진입/진출). 동역학엔 영향 없음, 메타/UI/export 용.
     area: float = 10.0            # m^2 (혼잡도 = N/area, 동적 체류확률에 사용)
     p_stay_base: float = 0.5      # 기본 체류 확률 (P_move_base = 1 - p_stay_base)
     dynamic_pstay: bool = True    # 혼잡도에 따른 동적 체류확률 사용 여부
@@ -254,6 +255,7 @@ class NodeConfig:
             "id": self.id,
             "name": self.name,
             "kind": self.kind,
+            "direction": self.direction,
             "area": self.area,
             "p_stay_base": self.p_stay_base,
             "dynamic_pstay": self.dynamic_pstay,
@@ -278,6 +280,7 @@ class NodeConfig:
             id=str(d["id"]),
             name=str(d.get("name", "")),
             kind=str(d.get("kind", "corridor")),
+            direction=str(d.get("direction", "") or ""),
             area=_f(d, "area", 10.0),
             p_stay_base=_f(d, "p_stay_base", 0.5),
             dynamic_pstay=bool(d.get("dynamic_pstay", True)),
@@ -366,6 +369,7 @@ class DynamicsConfig:
 class ExportConfig:
     aggregate_steps: int = 1            # 1=원해상도, N=N스텝 집계 다운샘플
     aggregate_method: str = "mean"      # mean | snapshot (혼잡도). 유입/유출은 항상 합산.
+    output_level: str = "group"         # group(물리 그룹 단위 집계) | node(노드 단위). 그룹 미정의면 동일.
     noise_enabled: bool = False
     noise_model: str = "gaussian"       # gaussian | poisson
     noise_sigma: float = 0.0            # gaussian 표준편차(인원)
@@ -379,9 +383,13 @@ class ExportConfig:
     @staticmethod
     def from_dict(d: Optional[Dict[str, Any]]) -> "ExportConfig":
         d = d or {}
+        # 누락/빈 값만 기본값으로 대체하고, 잘못된 값은 보존해 validate 가 잡도록 한다.
+        lvl = d.get("output_level", "group")
+        lvl = "group" if lvl in (None, "") else str(lvl)
         return ExportConfig(
             aggregate_steps=_i(d, "aggregate_steps", 1),
             aggregate_method=str(d.get("aggregate_method", "mean")),
+            output_level=lvl,
             noise_enabled=bool(d.get("noise_enabled", False)),
             noise_model=str(d.get("noise_model", "gaussian")),
             noise_sigma=_f(d, "noise_sigma", 0.0),

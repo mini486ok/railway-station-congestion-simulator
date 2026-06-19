@@ -45,6 +45,7 @@ export default function GraphEditor() {
   const setSelection = useStore((s) => s.setSelection);
   const addLink = useStore((s) => s.addLink);
   const addNode = useStore((s) => s.addNode);
+  const addNodePair = useStore((s) => s.addNodePair);
   const removeNode = useStore((s) => s.removeNode);
   const removeLink = useStore((s) => s.removeLink);
   const running = useStore((s) => s.running);
@@ -90,23 +91,33 @@ export default function GraphEditor() {
   }, [config.links, selection, running, removeLink, setRfEdges]);
 
   // 히트맵/선택 시각화: 스냅샷·선택 변화 시 style·label 만 갱신(위치·측정 유지)
+  const outputLevel = config.export?.output_level || "group";
   useEffect(() => {
-    // 물리 그룹 단위 혼잡도(분리 노드는 같은 장소이므로 합산)
+    // 분석 단위(노드별/물리 그룹별)에 따라 노드에 표시할 혼잡도 계산
     const gCount = {};
     const gDens = {};
     if (snapshot) {
-      const sums = {};
-      const areas = {};
-      config.nodes.forEach((nn, i) => {
-        const g = groupOf(nn);
-        sums[g] = (sums[g] || 0) + (snapshot.count[i] || 0);
-        areas[g] = (areas[g] || 0) + (nn.area || 1);
-      });
-      config.nodes.forEach((nn) => {
-        const g = groupOf(nn);
-        gCount[nn.id] = sums[g];
-        gDens[nn.id] = sums[g] / (areas[g] || 1);
-      });
+      if (outputLevel === "node") {
+        // 노드별: 각 노드 자신의 혼잡도
+        config.nodes.forEach((nn, i) => {
+          gCount[nn.id] = snapshot.count[i] || 0;
+          gDens[nn.id] = (snapshot.count[i] || 0) / (nn.area || 1);
+        });
+      } else {
+        // 물리 그룹별: 분리 노드는 같은 장소이므로 합산
+        const sums = {};
+        const areas = {};
+        config.nodes.forEach((nn, i) => {
+          const g = groupOf(nn);
+          sums[g] = (sums[g] || 0) + (snapshot.count[i] || 0);
+          areas[g] = (areas[g] || 0) + (nn.area || 1);
+        });
+        config.nodes.forEach((nn) => {
+          const g = groupOf(nn);
+          gCount[nn.id] = sums[g];
+          gDens[nn.id] = sums[g] / (areas[g] || 1);
+        });
+      }
     }
     setRfNodes((nds) =>
       nds.map((node) => {
@@ -124,7 +135,7 @@ export default function GraphEditor() {
       })
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [snapshot, selection, config.nodes]);
+  }, [snapshot, selection, config.nodes, outputLevel]);
 
   // 드래그 중에는 React Flow 내부 상태(onNodesChange)만 갱신해 부드럽게 움직이고,
   // 드래그가 끝나면 onNodeDragStop 에서 최종 좌표를 config 에 커밋한다.
@@ -158,6 +169,10 @@ export default function GraphEditor() {
     setShowGuide(false);
   };
 
+  // 노드 추가 모드: 양방향 쌍(권장) | 단일 노드
+  const [pairMode, setPairMode] = useState(true);
+  const addByMode = useCallback((kind) => (pairMode ? addNodePair(kind) : addNode(kind)), [pairMode, addNodePair, addNode]);
+
   // 명시적 링크 연결 모드: 출발 노드 → 도착 노드 클릭으로 단방향 링크 생성
   const [connectMode, setConnectMode] = useState(false);
   const [connectSrc, setConnectSrc] = useState(null);
@@ -179,9 +194,15 @@ export default function GraphEditor() {
   return (
     <div style={{ width: "100%", height: "100%", position: "relative" }}>
       <div className="ge-toolbar">
-        <span style={{ fontSize: 12, color: "#475569", marginRight: 6 }}>노드 추가:</span>
+        <div className="seg seg-sm" role="group" aria-label="추가 모드">
+          <button className={pairMode ? "on" : ""} aria-pressed={pairMode} disabled={running}
+            title="진입/진출(또는 하차/승차)을 같은 물리 그룹으로 한 번에 추가" onClick={() => setPairMode(true)}>양방향 쌍</button>
+          <button className={!pairMode ? "on" : ""} aria-pressed={!pairMode} disabled={running}
+            title="노드 1개만 추가" onClick={() => setPairMode(false)}>단일</button>
+        </div>
+        <span style={{ fontSize: 12, color: "#475569", margin: "0 4px" }}>추가:</span>
         {NODE_KINDS.map((k) => (
-          <button key={k.key} className="chip" disabled={running} style={{ borderColor: KIND_COLOR[k.key] }} onClick={() => addNode(k.key)}>
+          <button key={k.key} className="chip" disabled={running} style={{ borderColor: KIND_COLOR[k.key] }} onClick={() => addByMode(k.key)}>
             {k.label}
           </button>
         ))}

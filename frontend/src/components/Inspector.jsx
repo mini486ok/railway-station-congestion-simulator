@@ -1,5 +1,5 @@
 import { useStore } from "../store";
-import { NODE_KINDS } from "../defaults";
+import { NODE_KINDS, DIRECTION_LABELS } from "../defaults";
 import { round } from "../util";
 import InfoTip from "./InfoTip";
 
@@ -80,6 +80,13 @@ function NodeEditor({ node }) {
             <option key={k.key} value={k.key}>{k.label}</option>
           ))}
         </select>
+      </Field>
+      <Field label="방향" info="direction">
+        <input value={node.direction || ""} list={`dir-${node.kind}`} placeholder="예: 진입/진출, 상행/하행 (선택)"
+          onChange={(e) => set({ direction: e.target.value })} />
+        <datalist id={`dir-${node.kind}`}>
+          {(DIRECTION_LABELS[node.kind] || []).map((d) => <option key={d} value={d} />)}
+        </datalist>
       </Field>
       <Field label="물리 그룹" info="group">
         <input value={node.group || ""} placeholder="예: 출입구 (비우면 단독)"

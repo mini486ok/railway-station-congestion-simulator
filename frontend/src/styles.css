@@ -284,6 +284,10 @@ input, select { font: inherit; border: 1px solid #cbd5e1; border-radius: 5px; pa
 .seg { display: inline-flex; border: 1px solid #cbd5e1; border-radius: 6px; overflow: hidden; }
 .seg button { border: none; border-radius: 0; padding: 3px 10px; font-size: 12px; background: #fff; }
 .seg button.on { background: #2563eb; color: #fff; }
+.seg.seg-sm button { padding: 2px 7px; font-size: 11px; }
+.seg.seg-sm button.on { background: #0f172a; }
+.seg button:disabled { opacity: 0.5; cursor: default; }
+.export-level { display: flex; align-items: center; gap: 8px; margin: 2px 0 8px; font-size: 12px; color: #475569; }
 .node-toggles { display: flex; gap: 5px; flex-wrap: wrap; }
 .ntoggle {
   display: inline-flex; align-items: center; gap: 4px; font-size: 11px; padding: 2px 8px;
