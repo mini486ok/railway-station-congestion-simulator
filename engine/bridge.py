@@ -179,16 +179,22 @@ _BUNDLE_README = (
 _BATCH_README = (
     "철도역사 혼잡도 합성데이터 — 대량(다중 시드) 데이터셋\n"
     "=====================================================\n\n"
-    "runs/run_XXXX.npz : 시드(XXXX)만 다른 독립 실현(run). 각 파일은 X[T,N,F]+adjacency+\n"
-    "                    edge_index+edge_attr+정규화통계+메타를 담은 AI 모델 직결 텐서.\n"
-    "nodes.csv, edges.csv : 모든 run 공통 그래프 구조(시드와 무관).\n"
-    "config.json  : 재현용 설정(seed 는 manifest 의 seeds 참고).\n"
-    "manifest.json: num_runs, seeds, output_level, channels 등.\n\n"
-    "활용: 여러 run 을 하나의 코퍼스로 모아 run 단위로 train/val/test 를 나누면\n"
-    "      같은 시나리오의 시간조각이 학습/평가에 섞이는 누설을 막을 수 있습니다.\n"
+    "그래프 구조는 반복 횟수 N 과 무관하게 동일하므로 '1번'만, 혼잡도는 시드별로 'N개' 저장합니다.\n\n"
+    "[공유 그래프 — 1회]\n"
+    "  nodes.csv : 노드 목록(id,name,kind,group,direction,area,x,y)\n"
+    "  edges.csv : 연결성+거리+소요시간(src_id,dst_id,weight,distance,tau)\n"
+    "  X_all.npz 안의 adjacency/edge_index/edge_attr 도 그래프(1회분).\n\n"
+    "[시드별 혼잡도 — N개]\n"
+    "  runs/run_XXXX.csv : 시드 XXXX 의 혼잡도 시계열(step,time_sec,node_id,count,density,inflow,outflow,p_stay).\n\n"
+    "[AI 모델 직결 — 1개]\n"
+    "  X_all.npz : X_all[R,T,N,F](R=실행 수, 시드별 특징 텐서를 쌓음) + seeds + channels\n"
+    "              + 공유 그래프(adjacency/edge_index/edge_attr/node 메타). 그래프는 1회만 저장.\n\n"
+    "config.json  : 재현용 설정. manifest.json : num_runs/seeds/output_level/x_all_shape 등.\n\n"
+    "활용: run(시드) 단위로 train/val/test 를 나누면 같은 시나리오의 시간조각이 섞이는 누설을 막습니다.\n"
+    "      ml/dataset.py 의 build_dataset_from_stack('X_all.npz') 로 바로 학습 데이터를 만들 수 있습니다.\n"
 )
 
-# ── 대량(다중 시드) 데이터셋 생성 — N회 실행을 한 ZIP 으로 ──
+# ── 대량(다중 시드) 데이터셋 생성 — 그래프 1회 + 혼잡도 CSV N개 + 스택 텐서 X_all ──
 _batch = None
 
 
@@ -201,48 +207,81 @@ def batch_prepare(num_runs, seed_start: int = 0, level: str = "") -> str:
     buf = io.BytesIO()
     zf = zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED)
     n = max(1, int(num_runs))
-    _batch = {"num": n, "seed0": int(seed_start), "gl": gl,
-              "buf": buf, "zf": zf, "i": 0, "seeds": [], "level": None}
+    _batch = {"num": n, "seed0": int(seed_start), "gl": gl, "buf": buf, "zf": zf,
+              "i": 0, "seeds": [], "X": [], "channels": None, "graph": None,
+              "step0": None, "level": None}
     return json.dumps({"num": n, "seed_start": int(seed_start)})
 
 
 def batch_run_one() -> str:
-    """다음 시드로 1회 시뮬을 실행하고 runs/run_{seed}.npz 를 ZIP 에 추가."""
+    """다음 시드로 1회 시뮬을 실행 — 혼잡도 시계열 CSV 추가 + 특징 텐서 적재(그래프는 1회만)."""
     global _batch
     assert _batch is not None and _cfg is not None
-    import zipfile
     b = _batch
     seed = b["seed0"] + b["i"]
     cfg = SimConfig.from_dict(_cfg.to_dict())   # 시드만 바꾼 독립 실현
     cfg.seed = seed
+    exp = cfg.export
+    channels = list(exp.feature_channels) or ["count"]
     sim = Simulator(cfg)
     rec = sim.run()
+    # 혼잡도 시계열 CSV(시드별 N개)
+    b["zf"].writestr("runs/run_%04d.csv" % seed, "﻿" + rec.timeseries_csv(
+        cfg.dt_seconds, cfg.warmup_steps, exp.aggregate_steps, exp.aggregate_method, group_level=b["gl"]))
+    # 특징 텐서(스택용) — npz_bytes 와 동일 설정으로 산출
+    X, names, step0 = rec.feature_tensor(
+        channels, aggregate_steps=exp.aggregate_steps, aggregate_method=exp.aggregate_method,
+        warmup=cfg.warmup_steps, noise_enabled=exp.noise_enabled, noise_model=exp.noise_model,
+        noise_sigma=exp.noise_sigma, seed=cfg.seed + 999, group_level=b["gl"])
+    b["X"].append(X.astype(np.float32))
     if b["i"] == 0:
-        # 시드와 무관한 공유 그래프·설정은 1회만 기록
+        # 시드와 무관한 공유 그래프·설정·채널은 1회만 기록
         b["zf"].writestr("nodes.csv", "﻿" + rec.nodes_csv(b["gl"]))
         b["zf"].writestr("edges.csv", "﻿" + rec.edges_csv(b["gl"]))
         b["zf"].writestr("config.json", _cfg.to_json())
+        b["graph"] = rec.graph_arrays(b["gl"])
+        b["channels"] = list(names)
+        b["step0"] = step0.astype(np.int64)
         b["level"] = "group" if (rec.model.has_grouping and b["gl"]) else "node"
-    b["zf"].writestr(zipfile.ZipInfo("runs/run_%04d.npz" % seed),
-                     rec.npz_bytes(cfg, group_level=b["gl"]), compress_type=zipfile.ZIP_STORED)
     b["seeds"].append(seed)
     b["i"] += 1
     return json.dumps({"done": b["i"], "total": b["num"], "seed": seed})
 
 
 def batch_finish() -> bytes:
-    """대량 생성 ZIP 을 마감(manifest/README 추가) 후 bytes 반환."""
+    """대량 생성 마감 — 스택 텐서 X_all.npz(그래프 1회) + manifest/README 후 bytes 반환."""
     global _batch
+    import zipfile
     assert _batch is not None and _cfg is not None
     b = _batch
+    X_all = np.stack(b["X"], axis=0)  # [R, T, N, F]
+    payload = dict(
+        X_all=X_all,
+        seeds=np.array(b["seeds"], dtype=np.int64),
+        channels=np.array(b["channels"]),
+        step_index=b["step0"],
+        dt_seconds=np.array(_cfg.dt_seconds),
+        start_time_sec=np.array(_cfg.start_time_sec),
+        aggregate_steps=np.array(_cfg.export.aggregate_steps),
+        **b["graph"],  # adjacency/edge_index/edge_attr/node 메타(1회분)
+    )
+    npz_buf = io.BytesIO()
+    np.savez_compressed(npz_buf, **payload)
+    b["zf"].writestr(zipfile.ZipInfo("X_all.npz"), npz_buf.getvalue(), compress_type=zipfile.ZIP_STORED)
     manifest = {
         "num_runs": b["num"],
         "seeds": b["seeds"],
         "output_level": b["level"],
-        "channels": list(_cfg.export.feature_channels),
+        "channels": b["channels"],
+        "x_all_shape": list(X_all.shape),       # [R, T, N, F]
         "aggregate_steps": _cfg.export.aggregate_steps,
         "total_steps": _cfg.total_steps,
-        "note": "각 runs/run_XXXX.npz 는 시드만 다른 독립 실현(run). AI 모델 학습 시 run 단위 분할 권장.",
+        "files": {
+            "graph": ["nodes.csv", "edges.csv", "X_all.npz(adjacency 등)"],
+            "congestion_per_run": "runs/run_XXXX.csv (시드별 N개)",
+            "ai_tensor": "X_all.npz (X_all[R,T,N,F] + 공유 그래프)",
+        },
+        "note": "그래프는 1회, 혼잡도는 시드별 N개. AI 모델 학습 시 run(시드) 단위 분할 권장.",
     }
     b["zf"].writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
     b["zf"].writestr("README.txt", _BATCH_README)

@@ -175,15 +175,19 @@ station_GNN_bundle.zip{"\n"}
       </p>
 
       <h4><Code>대량 생성(ZIP)</Code> — 여러 시드 한 번에</h4>
+      <p>그래프 구조는 반복 횟수 N과 무관하게 같으므로 <b>1번만</b>, 혼잡도는 시드별로 <b>N개</b> 저장합니다.</p>
       <pre className="sample">
 station_dataset_x20.zip{"\n"}
-├─ runs/  run_0000.npz  run_0001.npz  …  run_0019.npz   ← 시드만 다른 N개 실현{"\n"}
-├─ nodes.csv  edges.csv   (모든 run 공통 그래프){"\n"}
-├─ config.json   manifest.json(seeds·단위·채널)</pre>
+├─ nodes.csv  edges.csv          ← 공유 그래프 구조(1회){"\n"}
+├─ runs/  run_0000.csv … run_0019.csv   ← 시드별 혼잡도 시계열(N개){"\n"}
+├─ X_all.npz                     ← X_all[R,T,N,F] + 공유 그래프(1회) — AI 직결{"\n"}
+└─ config.json   manifest.json(seeds·단위·shape)</pre>
       <p>
-        “실행 횟수”를 정하면 <b>시드를 자동으로 1씩 바꿔 N회</b> 실행하고 모든 결과를 한 ZIP으로 받습니다.
-        각 <Code>run_XXXX.npz</Code>는 독립 실현이라, <b>run 단위로 train/val/test를 나누면</b> 같은 시나리오의
-        시간조각이 섞이는 누설을 막을 수 있습니다(대량 코퍼스 생성용).
+        “실행 횟수”를 정하면 <b>시드를 자동으로 1씩 바꿔 N회</b> 실행합니다.
+        <Code>runs/run_XXXX.csv</Code>는 시드별 혼잡도(사람이 읽기 쉬움), <Code>X_all.npz</Code>는
+        모든 실현을 쌓은 <Code>X_all[R,T,N,F]</Code> 텐서에 그래프를 1회만 담은 AI 모델 직결 파일입니다.
+        <b>run(시드) 단위로 train/val/test를 나누면</b> 같은 시나리오의 시간조각이 섞이는 누설을 막을 수 있습니다.
+        (저장소 <Code>ml/dataset.py</Code> 의 <Code>build_dataset_from_stack</Code>로 바로 학습 데이터를 만들 수 있습니다.)
       </p>
 
       <h4><Code>timeseries.csv</Code> — 혼잡도 시계열(핵심)</h4>

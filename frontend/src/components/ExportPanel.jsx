@@ -137,9 +137,9 @@ export default function ExportPanel() {
           </button>
         </div>
         <div className="hint">
-          시드를 <b>{Number(config.seed) || 0}</b>부터 1씩 자동으로 바꿔 <b>{numRuns}회</b> 실행하고,
-          모든 결과를 한 ZIP(<code>runs/run_시드.npz</code> + 공유 그래프 + manifest)으로 내려받습니다.
-          횟수가 많을수록 시간이 걸립니다.
+          시드를 <b>{Number(config.seed) || 0}</b>부터 1씩 자동으로 바꿔 <b>{numRuns}회</b> 실행합니다.
+          그래프는 1번(<code>nodes/edges</code>), 혼잡도는 시드별 CSV <b>{numRuns}개</b>(<code>runs/run_시드.csv</code>),
+          그리고 모든 실현을 쌓은 <code>X_all.npz</code>(AI 직결)를 한 ZIP으로 내려받습니다. 횟수가 많을수록 시간이 걸립니다.
         </div>
       </div>
 

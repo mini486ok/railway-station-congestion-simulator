@@ -144,14 +144,15 @@ with sync_playwright() as p:
         d2 = dl2.value
         z2 = zipfile.ZipFile(d2.path())
         bnames = set(z2.namelist())
-        need2 = {"runs/run_0000.npz", "runs/run_0001.npz", "manifest.json", "nodes.csv", "config.json"}
+        # 그래프 1회(nodes/edges + X_all) + 혼잡도 CSV N개 + manifest
+        need2 = {"runs/run_0000.csv", "runs/run_0001.csv", "X_all.npz", "manifest.json", "nodes.csv", "config.json"}
         miss2 = need2 - bnames
         if miss2:
             fail("batch", f"누락 {miss2}", logs)
         man = json.loads(z2.read("manifest.json").decode("utf-8"))
-        if man.get("num_runs") != 2:
-            fail("batch", f"manifest num_runs={man.get('num_runs')}", logs)
-        results.append(f"대량 생성 ZIP({d2.suggested_filename}, {len(bnames)} files, {man['num_runs']} runs)")
+        if man.get("num_runs") != 2 or list(man.get("x_all_shape", []))[:1] != [2]:
+            fail("batch", f"manifest num_runs={man.get('num_runs')} shape={man.get('x_all_shape')}", logs)
+        results.append(f"대량 생성 ZIP({d2.suggested_filename}, {len(bnames)} files, {man['num_runs']} runs, X_all{man['x_all_shape']})")
     except Exception as e:
         fail("batch export", str(e), logs)
 

@@ -273,7 +273,55 @@ class Recorder:
                         + [f"{x:.4f}" for x in cum[ti]] + [f"{x:.4f}" for x in delta[ti]])
         return _csv(header, rows)
 
-    # ── npz (STGCN 직결) ──
+    # ── 그래프 구조(시드 무관) 배열 — 단일/대량 export 공용 ──
+    def graph_arrays(self, group_level: bool = True) -> Dict[str, np.ndarray]:
+        """adjacency/edge_index/edge_attr/node 메타를 출력 단위(group|node)에 맞춰 반환.
+
+        시드와 무관하므로 대량(다중 시드) export 에서는 한 번만 만들어 공유한다.
+        """
+        m = self.model
+        use_group = self._use_group(group_level)
+        if use_group:
+            # 물리 그룹 단위 그래프(분리 노드를 장소로 병합). 거리/tau 는 멤버 엣지 가중평균
+            A = group_adjacency(m)
+            ids = list(m.group_ids)
+            kinds = [self._group_kind(gk) for gk in range(len(m.group_ids))]
+            ga = group_edge_attrs(m)
+            ss, dd, attrs = [], [], []
+            for (gs, gd), (w, dist, tau) in sorted(ga.items()):
+                ss.append(gs); dd.append(gd); attrs.append([w, dist, tau])
+        else:
+            # 노드 단위: 동일 (s,d) 다중 링크를 인접행렬과 같은 기준으로 집계
+            A = adjacency_matrix(m)
+            ids = list(m.node_ids)
+            kinds = list(m.node_kinds)
+            na = node_edge_attrs(m)
+            ss, dd, attrs = [], [], []
+            for (s, d), (w, dist, tau) in sorted(na.items()):
+                ss.append(s); dd.append(d); attrs.append([w, dist, tau])
+        edge_index = np.array([ss, dd], dtype=np.int64) if ss else np.zeros((2, 0), dtype=np.int64)
+        edge_attr = (np.array(attrs, dtype=np.float64) if attrs else np.zeros((0, 3), dtype=np.float64))
+        out: Dict[str, np.ndarray] = dict(
+            adjacency=A.astype(np.float32),
+            edge_index=edge_index,
+            edge_attr=edge_attr.astype(np.float32),
+            node_ids=np.array(ids),
+            node_kinds=np.array(kinds),
+            output_level=np.array("group" if use_group else "node"),
+            requested_output_level=np.array("group" if group_level else "node"),
+            value_scale=np.array("group_member_sum" if use_group else "node"),
+        )
+        if use_group:
+            out["group_members"] = np.array([
+                "|".join(m.node_ids[i] for i in range(m.n_real) if int(m.group_index[i]) == gk)
+                for gk in range(len(m.group_ids))
+            ])
+        else:
+            out["node_direction"] = np.array(list(m.node_direction))
+            out["node_group"] = np.array(list(m.node_group))
+        return out
+
+    # ── npz (AI 모델 직결) ──
     def npz_bytes(self, cfg, normalize_stats: bool = True, group_level=None) -> bytes:
         """X[T,N,F] + adjacency + edge_index + edge_attr + 메타를 npz bytes 로.
 
@@ -297,58 +345,17 @@ class Recorder:
             seed=cfg.seed + 999,
             group_level=group_level,
         )
-        m = self.model
-        use_group = self._use_group(group_level)
-        if use_group:
-            # 물리 그룹 단위 그래프(분리 노드를 장소로 병합). 거리/tau 는 멤버 엣지 가중평균(노드 단위와 동일 스키마)
-            A = group_adjacency(m)
-            ids = list(m.group_ids)
-            kinds = [self._group_kind(gk) for gk in range(len(m.group_ids))]
-            ga = group_edge_attrs(m)
-            ss, dd, attrs = [], [], []
-            for (gs, gd), (w, dist, tau) in sorted(ga.items()):
-                ss.append(gs); dd.append(gd); attrs.append([w, dist, tau])
-            edge_index = np.array([ss, dd], dtype=np.int64) if ss else np.zeros((2, 0), dtype=np.int64)
-            edge_attr = np.array(attrs, dtype=np.float64) if attrs else np.zeros((0, 3), dtype=np.float64)
-        else:
-            # 노드 단위: 동일 (s,d) 다중 링크를 인접행렬과 같은 기준으로 집계(거리/tau 가중평균)
-            A = adjacency_matrix(m)
-            ids = list(m.node_ids)
-            kinds = list(m.node_kinds)
-            na = node_edge_attrs(m)
-            ss, dd, attrs = [], [], []
-            for (s, d), (w, dist, tau) in sorted(na.items()):
-                ss.append(s); dd.append(d); attrs.append([w, dist, tau])
-            edge_index = np.array([ss, dd], dtype=np.int64) if ss else np.zeros((2, 0), dtype=np.int64)
-            edge_attr = np.array(attrs, dtype=np.float64) if attrs else np.zeros((0, 3), dtype=np.float64)
-
+        # 그래프 구조(시드 무관)는 공용 헬퍼로
         payload = dict(
             X=X.astype(np.float32),
             channels=np.array(names),
-            node_ids=np.array(ids),
-            node_kinds=np.array(kinds),
-            adjacency=A.astype(np.float32),
-            edge_index=edge_index,
-            edge_attr=edge_attr.astype(np.float32),
             step_index=step0.astype(np.int64),
             dt_seconds=np.array(cfg.dt_seconds),
             start_time_sec=np.array(cfg.start_time_sec),
             aggregate_steps=np.array(exp.aggregate_steps),
-            # output_level=실제 해상도(그룹 미정의면 group 요청이라도 node). 요청 단위/값 스케일을 별도 메타로.
-            output_level=np.array("group" if use_group else "node"),
-            requested_output_level=np.array("group" if group_level else "node"),
-            value_scale=np.array("group_member_sum" if use_group else "node"),
+            **self.graph_arrays(group_level),
         )
-        # 출력 단위 메타: 그룹↔멤버 매핑(그룹) 또는 방향·소속그룹(노드) — 사후 재집계/교차검증용
-        if use_group:
-            payload["group_members"] = np.array([
-                "|".join(m.node_ids[i] for i in range(m.n_real) if int(m.group_index[i]) == gk)
-                for gk in range(len(m.group_ids))
-            ])
-        else:
-            payload["node_direction"] = np.array(list(m.node_direction))
-            payload["node_group"] = np.array(list(m.node_group))
-        # 정규화 통계: 전 채널 노드별 평균/표준편차 [N,F](STGCN 채널별 정규화) + count 호환 키.
+        # 정규화 통계: 전 채널 노드별 평균/표준편차 [N,F](채널별 정규화) + count 호환 키.
         # 값 스케일은 output_level 에 종속(그룹=멤버 합)이므로 payload["output_level"] 과 함께 해석할 것.
         if normalize_stats and X.shape[0] > 0:
             payload["feat_mean"] = X.mean(axis=0).astype(np.float32)            # [N, F]

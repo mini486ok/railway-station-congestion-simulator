@@ -94,8 +94,10 @@ Vite 빌드 → Pages 배포를 자동 수행한다. 저장소 Settings → Page
 - **출력 단위**: `export.output_level`(`group`/`node`). `group`이면 같은 물리 그룹의 양방향 노드를 하나로 합산해
   N(=노드)이 G(=그룹)로 줄고 adjacency도 그룹 그래프가 된다. `node`면 모든 노드를 그대로 출력한다.
 - **대량(다중 시드) 생성**: 웹 ExportPanel 의 **대량 데이터셋 생성**에서 실행 횟수 N 을 정하면 시드를
-  자동으로 1씩 바꿔 N회 실행하고, 모든 결과를 한 ZIP(`runs/run_XXXX.npz` + 공유 그래프 + `manifest.json`)으로
-  내려받는다. CLI 는 `--batch-seeds 0 1 2 …` 로 같은 코퍼스를 만든다. run 단위 train/val/test 분할 권장.
+  자동으로 1씩 바꿔 N회 실행한다. 그래프 구조는 N과 무관하게 같으므로 **1회만**(`nodes.csv`·`edges.csv`),
+  혼잡도는 시드별로 **N개**(`runs/run_XXXX.csv`), 그리고 모든 실현을 쌓은 `X_all.npz`(`X_all[R,T,N,F]`+공유 그래프 1회)
+  를 한 ZIP 으로 받는다. `ml/dataset.py` 의 `build_dataset_from_stack('X_all.npz')` 로 바로 학습 데이터(run 단위
+  train/val/test 분할)를 만든다. CLI 는 `--batch-seeds 0 1 2 …` 로 run 별 폴더 코퍼스를 만든다.
 - **AI 모델 학습 권장**: 신호가 풍부한 **`group/`** 를 기본으로 쓰고(`node/`는 하차·진출 노드가 희소),
   채널별 `feat_mean/std`로 z-score 정규화하라. npz 의 `value_scale`(`node`/`group_member_sum`)·
   `requested_output_level` 메타로 단위를 구분하며, **node·group 데이터를 한 모델에 섞지 말 것**.

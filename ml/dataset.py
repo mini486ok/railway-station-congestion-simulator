@@ -201,3 +201,65 @@ def build_multirun_dataset(paths: Sequence[str], P: int = 12, Q: int = 3, target
         target_std=std[:, target_idx].astype(np.float32),
         channels=channels + ["tod_sin", "tod_cos"], node_ids=loaded[0][3], target_idx=target_idx,
     )
+
+
+def load_stack_npz(path: str):
+    """웹 '대량 생성'의 X_all.npz(X_all[R,T,N,F] + 공유 그래프 + seeds) 로더."""
+    d = np.load(path, allow_pickle=True)
+    X_all = d["X_all"].astype(np.float32)        # [R, T, N, F]
+    channels = [str(c) for c in d["channels"]]
+    A = d["adjacency"].astype(np.float32)
+    node_ids = [str(x) for x in d["node_ids"]]
+    seeds = [int(s) for s in d["seeds"]] if "seeds" in d.files else list(range(X_all.shape[0]))
+    dt = float(d["dt_seconds"]) if "dt_seconds" in d.files else 1.0
+    start = float(d["start_time_sec"]) if "start_time_sec" in d.files else 0.0
+    step_index = (d["step_index"].astype(np.int64) if "step_index" in d.files
+                  else np.arange(X_all.shape[1], dtype=np.int64))
+    return X_all, channels, A, node_ids, seeds, dt, start, step_index
+
+
+def build_dataset_from_stack(path: str, P: int = 12, Q: int = 3, target: str = "count",
+                             val_runs: int = 1, test_runs: int = 1) -> Dataset:
+    """대량 생성 X_all.npz 한 파일에서 run(시드) 단위 train/val/test 홀드아웃 데이터셋 구성.
+
+    그래프는 1회분(공유), 혼잡도는 R개 run 의 X_all[R,T,N,F] 로 들어 있으므로,
+    여러 개의 단일-run npz 를 모으는 build_multirun_dataset 과 동등한 분할을 한 파일에서 수행한다.
+    """
+    X_all, channels, A, node_ids, _seeds, dt, start, step_index = load_stack_npz(path)
+    R = X_all.shape[0]
+    if R < 3:
+        raise ValueError("스택 데이터셋(X_all)에는 최소 3 run(시드) 이 필요합니다.")
+    target_idx = _require_target(channels, target)
+    n_te = max(1, int(test_runs))
+    n_va = max(1, int(val_runs))
+    te_idx = set(range(R - n_te, R))
+    va_idx = set(range(R - n_te - n_va, R - n_te))
+    tr = [i for i in range(R) if i not in te_idx and i not in va_idx]
+
+    tr_stack = np.concatenate([X_all[i] for i in tr], axis=0)
+    mean = tr_stack.mean(axis=0)
+    std = tr_stack.std(axis=0) + 1e-6
+
+    def gather(idxs):
+        xs, ys = [], []
+        for i in idxs:
+            X_aug, _ = _augment(X_all[i], channels, dt, start, step_index, mean, std)
+            x, y = _windows(X_aug, P, Q, target_idx)
+            if x.shape[0]:
+                xs.append(x); ys.append(y)
+        if not xs:
+            return (np.zeros((0, P, A.shape[0], len(channels) + 2), np.float32),
+                    np.zeros((0, Q, A.shape[0]), np.float32))
+        return np.concatenate(xs), np.concatenate(ys)
+
+    xtr, ytr = gather(tr)
+    xva, yva = gather(sorted(va_idx))
+    xte, yte = gather(sorted(te_idx))
+
+    return Dataset(
+        xtr=xtr, ytr=ytr, xva=xva, yva=yva, xte=xte, yte=yte,
+        A_hat=normalized_adjacency(A), A_hat_bwd=normalized_adjacency(A.T),
+        target_mean=mean[:, target_idx].astype(np.float32),
+        target_std=std[:, target_idx].astype(np.float32),
+        channels=channels + ["tod_sin", "tod_cos"], node_ids=node_ids, target_idx=target_idx,
+    )
