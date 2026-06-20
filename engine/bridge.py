@@ -6,6 +6,7 @@ bytes(npz)/str(csv) 로 받는다. 변환 복잡도를 줄이기 위해 dict 결
 """
 from __future__ import annotations
 
+import io
 import json
 
 import numpy as np
@@ -108,23 +109,94 @@ def run_all() -> str:
     return json.dumps(_snapshot(), ensure_ascii=False)
 
 
-def export_csv(kind: str = "timeseries") -> str:
+def _level_flag(level: str) -> bool:
+    """출력 단위 문자열 → group_level 불리언. 빈값/auto 면 cfg.export.output_level 을 따른다.
+
+    잘못된 값은 조용히 폴백하지 않고 ValueError 로 알린다(검증 일관성).
+    """
+    assert _cfg is not None
+    lv = (level or "").strip().lower()
+    if lv in ("", "auto"):
+        return _cfg.export.output_level != "node"
+    if lv in ("node", "nodes"):
+        return False
+    if lv in ("group", "groups"):
+        return True
+    raise ValueError(f"알 수 없는 출력 단위(level): {level!r} — '', 'auto', 'node', 'group' 중 하나여야 합니다.")
+
+
+_CSV_KINDS = ("nodes", "edges", "departures", "timeseries")
+
+
+def _csv_for(kind: str, group_level: bool) -> str:
     assert _sim is not None and _cfg is not None
     rec = _sim.recorder
-    group_level = (_cfg.export.output_level != "node")
     if kind == "nodes":
         return rec.nodes_csv(group_level)
     if kind == "edges":
         return rec.edges_csv(group_level)
     if kind == "departures":
         return rec.departures_csv(_cfg.dt_seconds, _cfg.warmup_steps, _cfg.export.aggregate_steps, group_level)
-    return rec.timeseries_csv(
-        _cfg.dt_seconds, _cfg.warmup_steps,
-        _cfg.export.aggregate_steps, _cfg.export.aggregate_method,
-        group_level=group_level,
-    )
+    if kind == "timeseries":
+        return rec.timeseries_csv(
+            _cfg.dt_seconds, _cfg.warmup_steps,
+            _cfg.export.aggregate_steps, _cfg.export.aggregate_method,
+            group_level=group_level,
+        )
+    raise ValueError(f"알 수 없는 CSV 종류(kind): {kind!r} — {_CSV_KINDS} 중 하나여야 합니다.")
 
 
-def export_npz() -> bytes:
+def export_csv(kind: str = "timeseries", level: str = "") -> str:
+    """단일 CSV. level: ""(설정 따름) | "node" | "group"."""
     assert _sim is not None and _cfg is not None
-    return _sim.recorder.npz_bytes(_cfg)
+    return _csv_for(kind, _level_flag(level))
+
+
+def export_npz(level: str = "") -> bytes:
+    """단일 X.npz. level: ""(설정 따름) | "node" | "group"."""
+    assert _sim is not None and _cfg is not None
+    return _sim.recorder.npz_bytes(_cfg, group_level=_level_flag(level))
+
+
+# 번들에 담는 GNN 파일 세트(연결성=edges, 거리·시간=edges 의 distance/tau, 피처=timeseries/X.npz)
+_BUNDLE_README = (
+    "철도역사 혼잡도 합성데이터 번들\n"
+    "================================\n\n"
+    "node/  : 노드 단위(양방향 2노드를 각각 개별 노드로) GNN 구성 파일\n"
+    "group/ : 물리 그룹 단위(양방향 2노드를 하나의 물리 장소로 합산) GNN 구성 파일\n\n"
+    "각 폴더 공통 파일:\n"
+    "  nodes.csv       : 노드 목록(id,name,kind,group,direction,area,x,y)\n"
+    "  edges.csv       : 연결성+거리+소요시간(src_id,dst_id,weight,distance,tau)\n"
+    "  timeseries.csv  : 혼잡도 시계열(step,time_sec,node_id,count,density,inflow,outflow,p_stay)\n"
+    "  departures.csv  : 시스템 밖 유출(출입구 퇴장/승강장 탑승)\n"
+    "  X.npz           : STGCN 직결 텐서 X[T,N,F] + adjacency + edge_index + edge_attr + 메타\n\n"
+    "config.json : 재현용 전체 설정(같은 config+시드 → 동일 결과)\n\n"
+    "노드 단위와 그룹 단위는 같은 시뮬 결과를 서로 다른 그래프 해상도로 집계한 것입니다.\n"
+    "물리 그룹이 정의돼 있지 않으면 두 폴더의 내용은 동일합니다.\n"
+)
+
+
+def export_bundle() -> bytes:
+    """노드 단위 + 물리 그룹 단위 GNN 파일을 한 번에 담은 ZIP bytes.
+
+    node/ 와 group/ 두 폴더에 각각 nodes/edges/timeseries/departures CSV 와 X.npz 를 만들고,
+    재현용 config.json, 설명 README.txt 를 포함한다. 사용자가 출력 단위를 고르지 않아도
+    두 해상도(노드별·그룹별)의 GNN 구성 파일을 동시에 확보할 수 있다.
+    """
+    assert _sim is not None and _cfg is not None
+    import zipfile
+
+    rec = _sim.recorder
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for folder, gl in (("node", False), ("group", True)):
+            z.writestr(f"{folder}/nodes.csv", "﻿" + _csv_for("nodes", gl))
+            z.writestr(f"{folder}/edges.csv", "﻿" + _csv_for("edges", gl))
+            z.writestr(f"{folder}/timeseries.csv", "﻿" + _csv_for("timeseries", gl))
+            z.writestr(f"{folder}/departures.csv", "﻿" + _csv_for("departures", gl))
+            # X.npz 는 이미 np.savez_compressed 로 압축돼 있으므로 ZIP 은 무압축 저장(이중압축 회피)
+            z.writestr(zipfile.ZipInfo(f"{folder}/X.npz"), rec.npz_bytes(_cfg, group_level=gl),
+                       compress_type=zipfile.ZIP_STORED)
+        z.writestr("config.json", _cfg.to_json())
+        z.writestr("README.txt", _BUNDLE_README)
+    return buf.getvalue()

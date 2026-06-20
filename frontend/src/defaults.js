@@ -42,7 +42,7 @@ export function defaultConfig() {
     name: "샘플 역사 (양방향 2노드 · 물리 그룹)",
     dt_seconds: 1.0,
     total_steps: 1800,
-    start_time_sec: 28800.0,
+    start_time_sec: 25200.0,
     seed: 0,
     integer_mode: false,
     warmup_steps: 60,
@@ -61,7 +61,7 @@ export function defaultConfig() {
       aggregate_method: "mean",
       output_level: "group",
       noise_enabled: true,
-      noise_model: "gaussian",
+      noise_model: "poisson",
       noise_sigma: 2.0,
       feature_channels: ["count", "density", "inflow", "outflow"],
     },
@@ -71,19 +71,19 @@ export function defaultConfig() {
     nodes: [
       // ── 출입구(입구/출구) ──
       {
-        id: "E_in", name: "입구", kind: "entrance", direction: "입구", group: "출입구", area: 40, p_stay_base: 0.3,
+        id: "E_in", name: "입구", kind: "entrance", direction: "입구", group: "출입구", area: 90, p_stay_base: 0.3,
         dynamic_pstay: true, exit_weight: 0, n0: 0, x: 60, y: 90, platform_role: "both", train_schedule: null,
         source: { type: "poisson", rate: 2.0, sigma: 0, profile: { hours: [0, 6, 8, 9, 12, 18, 19, 23], multipliers: [0.2, 0.6, 2.5, 1.5, 1.0, 2.2, 1.4, 0.4] } },
         trains: [],
       },
-      { id: "E_out", name: "출구", kind: "entrance", direction: "출구", group: "출입구", area: 40, p_stay_base: 0.2, dynamic_pstay: true, exit_weight: 1.0, n0: 0, x: 60, y: 300, source: null, trains: [], platform_role: "both", train_schedule: null },
+      { id: "E_out", name: "출구", kind: "entrance", direction: "출구", group: "출입구", area: 90, p_stay_base: 0.2, dynamic_pstay: true, exit_weight: 1.0, n0: 0, x: 60, y: 300, source: null, trains: [], platform_role: "both", train_schedule: null },
       // ── 대합실 통로(진입/진출) — 공유 공간이라 방향 노드 면적은 실제 면적의 절반(합=실제) ──
       // (참고) 노드 단위 출력에선 방향 노드 count/면적이 절반 기준 → 물리 실제값은 '물리 그룹별' 출력에서 일치.
-      { id: "C_in", name: "대합실·진입", kind: "corridor", direction: "진입", group: "대합실", area: 80, p_stay_base: 0.4, dynamic_pstay: true, exit_weight: 0, n0: 0, x: 240, y: 90, source: null, trains: [], platform_role: "both", train_schedule: null },
-      { id: "C_out", name: "대합실·진출", kind: "corridor", direction: "진출", group: "대합실", area: 80, p_stay_base: 0.4, dynamic_pstay: true, exit_weight: 0, n0: 0, x: 240, y: 300, source: null, trains: [], platform_role: "both", train_schedule: null },
+      { id: "C_in", name: "대합실·진입", kind: "corridor", direction: "진입", group: "대합실", area: 140, p_stay_base: 0.4, dynamic_pstay: true, exit_weight: 0, n0: 0, x: 240, y: 90, source: null, trains: [], platform_role: "both", train_schedule: null },
+      { id: "C_out", name: "대합실·진출", kind: "corridor", direction: "진출", group: "대합실", area: 140, p_stay_base: 0.4, dynamic_pstay: true, exit_weight: 0, n0: 0, x: 240, y: 300, source: null, trains: [], platform_role: "both", train_schedule: null },
       // ── 게이트(진입/진출) — 개찰구 처리율(throughput) 적용 ──
-      { id: "G_in", name: "진입 게이트", kind: "gate", direction: "진입", group: "게이트", area: 18, p_stay_base: 0.2, dynamic_pstay: true, throughput_cap: 40, exit_weight: 0, n0: 0, x: 420, y: 90, source: null, trains: [], platform_role: "both", train_schedule: null },
-      { id: "G_out", name: "진출 게이트", kind: "gate", direction: "진출", group: "게이트", area: 18, p_stay_base: 0.2, dynamic_pstay: true, throughput_cap: 40, exit_weight: 0, n0: 0, x: 420, y: 300, source: null, trains: [], platform_role: "both", train_schedule: null },
+      { id: "G_in", name: "진입 게이트", kind: "gate", direction: "진입", group: "게이트", area: 18, p_stay_base: 0.2, dynamic_pstay: true, throughput_cap: 22, exit_weight: 0, n0: 0, x: 420, y: 90, source: null, trains: [], platform_role: "both", train_schedule: null },
+      { id: "G_out", name: "진출 게이트", kind: "gate", direction: "진출", group: "게이트", area: 18, p_stay_base: 0.2, dynamic_pstay: true, throughput_cap: 22, exit_weight: 0, n0: 0, x: 420, y: 300, source: null, trains: [], platform_role: "both", train_schedule: null },
       // ── 계단(하행/상행) — 공유 공간 절반 면적 ──
       { id: "T_dn", name: "계단·하행", kind: "stairs", direction: "하행", group: "계단", area: 16, p_stay_base: 0.45, dynamic_pstay: true, exit_weight: 0, n0: 0, x: 600, y: 90, source: null, trains: [], platform_role: "both", train_schedule: null },
       { id: "T_up", name: "계단·상행", kind: "stairs", direction: "상행", group: "계단", area: 16, p_stay_base: 0.5, dynamic_pstay: true, exit_weight: 0, n0: 0, x: 600, y: 300, source: null, trains: [], platform_role: "both", train_schedule: null },
@@ -92,13 +92,13 @@ export function defaultConfig() {
         id: "P_board", name: "승강장1·승차", kind: "platform", direction: "승차", group: "승강장1", area: 130, p_stay_base: 0.55,
         dynamic_pstay: true, exit_weight: 0, n0: 0, x: 780, y: 90, source: null, trains: [],
         platform_role: "board",
-        train_schedule: { first_arrival: 100, headway: 300, num_trains: 0, alight_mean: 0, alight_sigma: 0, alight_dist: "normal", dwell_steps: 30, train_capacity: 800, board_cap: 25, onboard_load: 0, delay_std: 0 },
+        train_schedule: { first_arrival: 100, headway: 210, num_trains: 0, alight_mean: 0, alight_sigma: 0, alight_dist: "normal", dwell_steps: 32, train_capacity: 1100, board_cap: 34, onboard_load: 0, delay_std: 0 },
       },
       {
         id: "P_alight", name: "승강장1·하차", kind: "platform", direction: "하차", group: "승강장1", area: 130, p_stay_base: 0.45,
         dynamic_pstay: true, exit_weight: 0, n0: 0, x: 780, y: 300, source: null, trains: [],
         platform_role: "alight",
-        train_schedule: { first_arrival: 100, headway: 300, num_trains: 0, alight_mean: 110, alight_sigma: 15, alight_dist: "normal", dwell_steps: 30, train_capacity: 800, board_cap: 25, onboard_load: 0, delay_std: 0 },
+        train_schedule: { first_arrival: 100, headway: 210, num_trains: 0, alight_mean: 110, alight_sigma: 15, alight_dist: "normal", dwell_steps: 32, train_capacity: 1100, board_cap: 34, onboard_load: 0, delay_std: 0 },
       },
     ],
     // 진입: 입구→대합실→게이트→계단→승차 / 진출: 하차→계단→게이트→대합실→출구

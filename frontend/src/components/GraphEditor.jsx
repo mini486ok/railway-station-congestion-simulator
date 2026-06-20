@@ -49,6 +49,12 @@ export default function GraphEditor() {
   const removeNode = useStore((s) => s.removeNode);
   const removeLink = useStore((s) => s.removeLink);
   const running = useStore((s) => s.running);
+  const setSelectedIds = useStore((s) => s.setSelectedIds);
+  const copyNodes = useStore((s) => s.copyNodes);
+  const pasteClipboard = useStore((s) => s.pasteClipboard);
+  const selectedIds = useStore((s) => s.selectedIds);
+  const selectionId = useStore((s) => (s.selection?.type === "node" ? s.selection.id : null));
+  const clipCount = useStore((s) => s.clipboard?.nodes?.length || 0);
 
   const [rfNodes, setRfNodes, onNodesChange] = useNodesState([]);
   const [rfEdges, setRfEdges, onEdgesChange] = useEdgesState([]);
@@ -153,6 +159,18 @@ export default function GraphEditor() {
     setTimeout(() => inst.fitView({ padding: 0.25, duration: 0 }), 80);
   }, []);
 
+  // 다중 선택 추적(복사 대상). 박스 드래그/Shift+클릭으로 여러 노드 선택 가능.
+  const onSelectionChange = useCallback(
+    ({ nodes }) => setSelectedIds((nodes || []).map((n) => n.id)),
+    [setSelectedIds]
+  );
+  // 툴바 복사/붙여넣기 — 단축키(Ctrl+C/V)와 동일 동작.
+  const copyCount = selectedIds.length || (selectionId ? 1 : 0);
+  const doCopy = useCallback(() => {
+    const ids = selectedIds.length ? selectedIds : (selectionId ? [selectionId] : []);
+    if (ids.length) copyNodes(ids);
+  }, [selectedIds, selectionId, copyNodes]);
+
   // 캔버스에서 Delete/Backspace 로 삭제
   const onNodesDelete = useCallback((deleted) => deleted.forEach((n) => removeNode(n.id)), [removeNode]);
   const onEdgesDelete = useCallback(
@@ -218,13 +236,21 @@ export default function GraphEditor() {
         >
           {connectMode ? "연결 중 — 클릭해 종료" : "링크 연결"}
         </button>
-        <span className="ge-hint">클릭=선택 · 드래그=이동 · Del=삭제</span>
+        <span className="ge-divider" />
+        <button className="chip" disabled={!copyCount} title="선택한 노드 복사 (Ctrl+C)" onClick={doCopy}>
+          복사{copyCount > 1 ? ` (${copyCount})` : ""}
+        </button>
+        <button className="chip" disabled={running || !clipCount} onClick={() => pasteClipboard()}
+          title={running ? "실행 중에는 붙여넣기를 할 수 없습니다(정지 후 가능)" : "복사한 노드 붙여넣기 (Ctrl+V)"}>
+          붙여넣기{clipCount ? ` (${clipCount}개 복사됨)` : ""}
+        </button>
+        <span className="ge-hint">클릭=선택 · 드래그=이동 · Del=삭제 · Ctrl+C/V=복사</span>
       </div>
 
       {showGuide && (
         <div className="onboarding">
           <strong>시작하기</strong>
-          <span>① 노드 추가 → ② “링크 연결”로 노드 잇기 → ③ “생성·실행”</span>
+          <span>이미 예제 역사가 그려져 있어요 — 우측 “시뮬레이션”의 <b>▶ 생성·실행</b>을 바로 눌러보세요. 다른 예제는 상단 <b>📁 템플릿</b>에서 불러올 수 있어요.</span>
           <button onClick={dismissGuide} aria-label="가이드 닫기">닫기</button>
         </div>
       )}
@@ -247,8 +273,9 @@ export default function GraphEditor() {
         deleteKeyCode={running ? null : ["Backspace", "Delete"]}
         onConnect={onConnect}
         onNodeClick={handleNodeClick}
+        onSelectionChange={onSelectionChange}
         onEdgeClick={(e, ed) => setSelection({ type: "link", id: ed.id })}
-        onPaneClick={() => setSelection(null)}
+        onPaneClick={() => { setSelection(null); setSelectedIds([]); }}
         onInit={onInit}
         fitView
         fitViewOptions={{ padding: 0.25 }}
@@ -261,10 +288,11 @@ export default function GraphEditor() {
       </ReactFlow>
 
       {snapshot && (
-        <div className="heat-legend" aria-hidden="true">
-          <div className="hl-title">밀도(명/㎡)</div>
-          <div className="hl-bar" />
-          <div className="hl-scale"><span>0</span><span>{config.dynamics.rho_cap}</span></div>
+        <div className="heat-legend" role="img"
+          aria-label={`밀도 히트맵 범례: 노드 색은 밀도(명/㎡)를 나타내며 0(여유)부터 ${config.dynamics.rho_cap}(혼잡)까지입니다. 각 노드에 인원수와 밀도 숫자도 함께 표시됩니다.`}>
+          <div className="hl-title" aria-hidden="true">밀도(명/㎡)</div>
+          <div className="hl-bar" aria-hidden="true" />
+          <div className="hl-scale" aria-hidden="true"><span>0</span><span>{config.dynamics.rho_cap}</span></div>
         </div>
       )}
     </div>

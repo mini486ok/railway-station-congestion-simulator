@@ -146,7 +146,7 @@ self.onmessage = async (e) => {
 
     case "exportCsv":
       try {
-        const text = bridge.export_csv(m.kind);
+        const text = bridge.export_csv(m.kind, m.level || "");
         post({ type: "result", id: m.id, data: { kind: m.kind, text } });
       } catch (err) {
         post({ type: "result", id: m.id, error: String(err) });
@@ -155,10 +155,23 @@ self.onmessage = async (e) => {
 
     case "exportNpz":
       try {
-        const pyBytes = bridge.export_npz();
+        const pyBytes = bridge.export_npz(m.level || "");
         const u8 = pyBytes.toJs();
         pyBytes.destroy();
-        const buf = u8.buffer.slice(0);
+        // TypedArray 의 실제 뷰 구간만 복사(byteOffset>0 일 때 앞부분 쓰레기 혼입 방지)
+        const buf = u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength);
+        post({ type: "result", id: m.id, data: { bytes: buf } }, [buf]);
+      } catch (err) {
+        post({ type: "result", id: m.id, error: String(err) });
+      }
+      break;
+
+    case "exportBundle":
+      try {
+        const pyBytes = bridge.export_bundle();
+        const u8 = pyBytes.toJs();
+        pyBytes.destroy();
+        const buf = u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength);
         post({ type: "result", id: m.id, data: { bytes: buf } }, [buf]);
       } catch (err) {
         post({ type: "result", id: m.id, error: String(err) });

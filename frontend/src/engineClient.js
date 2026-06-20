@@ -55,11 +55,15 @@ export class EngineClient {
   runAll() {
     return this._call("runAll");
   }
-  exportCsv(kind) {
-    return this._call("exportCsv", { kind });
+  exportCsv(kind, level = "") {
+    return this._call("exportCsv", { kind, level });
   }
-  exportNpz() {
-    return this._call("exportNpz");
+  exportNpz(level = "") {
+    return this._call("exportNpz", { level });
+  }
+  // 노드 단위 + 물리 그룹 단위 GNN 파일을 한 번에 담은 ZIP
+  exportBundle() {
+    return this._call("exportBundle");
   }
 
   run() {

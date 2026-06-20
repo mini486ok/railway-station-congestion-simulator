@@ -26,12 +26,9 @@ def _write(path: str, data) -> None:
         f.write(data)
 
 
-def export_run(cfg: SimConfig, out_dir: str) -> dict:
+def _write_level(rec, cfg, out_dir: str, group_level: bool) -> None:
+    """한 출력 단위(노드/그룹)의 GNN 구성 파일 세트를 out_dir 에 쓴다."""
     os.makedirs(out_dir, exist_ok=True)
-    sim = Simulator(cfg)
-    rec = sim.run()
-    group_level = (cfg.export.output_level != "node")  # 노드별/물리 그룹별 출력 단위
-
     _write(os.path.join(out_dir, "nodes.csv"), rec.nodes_csv(group_level))
     _write(os.path.join(out_dir, "edges.csv"), rec.edges_csv(group_level))
     _write(os.path.join(out_dir, "timeseries.csv"),
@@ -40,7 +37,21 @@ def export_run(cfg: SimConfig, out_dir: str) -> dict:
                               group_level=group_level))
     _write(os.path.join(out_dir, "departures.csv"),
            rec.departures_csv(cfg.dt_seconds, cfg.warmup_steps, cfg.export.aggregate_steps, group_level))
-    _write(os.path.join(out_dir, "X.npz"), rec.npz_bytes(cfg))
+    _write(os.path.join(out_dir, "X.npz"), rec.npz_bytes(cfg, group_level=group_level))
+
+
+def export_run(cfg: SimConfig, out_dir: str) -> dict:
+    os.makedirs(out_dir, exist_ok=True)
+    sim = Simulator(cfg)
+    rec = sim.run()
+
+    # 1) 루트: 설정의 output_level 단위(하위호환 — 기존 out/X.npz·timeseries.csv 등 경로 유지)
+    primary_group = (cfg.export.output_level != "node")
+    _write_level(rec, cfg, out_dir, primary_group)
+    # 2) 추가: 노드 단위(node/)·물리 그룹 단위(group/) 두 GNN 구성 세트를 모두 출력
+    #    (그룹 미정의면 두 폴더 내용은 동일)
+    _write_level(rec, cfg, os.path.join(out_dir, "node"), False)
+    _write_level(rec, cfg, os.path.join(out_dir, "group"), True)
     _write(os.path.join(out_dir, "config.json"), cfg.to_json())
 
     summary = {

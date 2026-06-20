@@ -26,6 +26,9 @@ export default function App() {
   const canRedo = useStore((s) => s.future.length > 0);
   const [help, setHelp] = useState(false);
   const [tpl, setTpl] = useState(false);
+  // 모달이 열려 있으면 전역 단축키(붙여넣기/되돌리기)가 숨은 그래프를 바꾸지 않도록 가드.
+  const modalOpenRef = useRef(false);
+  modalOpenRef.current = help || tpl;
 
   useEffect(() => {
     if (inited.current) return;
@@ -43,17 +46,32 @@ export default function App() {
     st.setEngineClient(client);
   }, []);
 
-  // 전역 단축키: Ctrl/⌘+Z 되돌리기, Ctrl/⌘+Shift+Z(또는 Ctrl+Y) 다시 실행.
+  // 전역 단축키: Ctrl/⌘+Z 되돌리기, Ctrl/⌘+Shift+Z(또는 Ctrl+Y) 다시 실행,
+  //            Ctrl/⌘+C 노드 복사, Ctrl/⌘+V 붙여넣기.
   useEffect(() => {
     const onKey = (e) => {
       if (!(e.ctrlKey || e.metaKey)) return;
+      if (modalOpenRef.current) return; // 모달(사용법/템플릿)이 열려 있으면 그래프 단축키 비활성
       const k = e.key.toLowerCase();
-      if (k !== "z" && k !== "y") return;
-      if (isEditable(document.activeElement)) return; // 입력 중엔 기본 동작 유지
-      e.preventDefault();
+      if (isEditable(document.activeElement)) return; // 입력 중엔 기본 동작(텍스트 편집) 유지
       const st = useStore.getState();
-      if (k === "y" || (k === "z" && e.shiftKey)) st.redo();
-      else st.undo();
+      if (k === "z" || k === "y") {
+        e.preventDefault();
+        if (k === "y" || (k === "z" && e.shiftKey)) st.redo();
+        else st.undo();
+      } else if (k === "c") {
+        // 선택된 노드(다중 또는 단일)를 복사. 노드 선택이 없으면 기본 텍스트 복사에 양보.
+        const ids = st.selectedIds.length ? st.selectedIds
+          : (st.selection?.type === "node" ? [st.selection.id] : []);
+        if (!ids.length) return;
+        e.preventDefault();
+        st.copyNodes(ids);
+      } else if (k === "v") {
+        // 시뮬 실행 중에는 그래프 변경 금지(스냅샷과 어긋남 방지).
+        if (st.running || !st.clipboard) return;
+        e.preventDefault();
+        st.pasteClipboard();
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);

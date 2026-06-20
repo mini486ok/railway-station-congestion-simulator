@@ -7,8 +7,8 @@ const AREA_BY_KIND = { platform: 250, corridor: 100, gate: 18, stairs: 30, escal
 // 출입구(별도 출입문)·게이트(별도 개찰 뱅크)는 방향별로 독립 공간이라 각자 면적 유지.
 const PAIR_AREA = { entrance: 40, gate: 18, corridor: 50, stairs: 15, escalator: 15, elevator: 6, platform: 130 };
 const platSchedule = (alight) => ({
-  first_arrival: 100, headway: 300, num_trains: 0, alight_mean: alight, alight_sigma: 15,
-  alight_dist: "normal", dwell_steps: 30, train_capacity: 800, board_cap: 25, onboard_load: 0, delay_std: 0,
+  first_arrival: 100, headway: 210, num_trains: 0, alight_mean: alight, alight_sigma: 15,
+  alight_dist: "normal", dwell_steps: 32, train_capacity: 1200, board_cap: 38, onboard_load: 0, delay_std: 0,
 });
 
 let _seq = 100;
@@ -57,6 +57,8 @@ export const useStore = create((set, get) => ({
 
   // ── 선택/검증/런타임 ──
   selection: null, // { type: 'node'|'link', id }
+  selectedIds: [], // 그래프에서 다중 선택된 노드 id(복사용) — React Flow onSelectionChange 가 갱신
+  clipboard: null, // 복사한 { nodes, links } (붙여넣기 대기)
   validation: null, // validate 결과
   engineStatus: "loading", // loading | progress | ready | error
   engineMsg: "Pyodide 초기화 대기…",
@@ -202,6 +204,48 @@ export const useStore = create((set, get) => ({
     }),
 
   setSelection: (selection) => set({ selection }),
+  setSelectedIds: (selectedIds) => set({ selectedIds }),
+
+  // ── 복사 / 붙여넣기(Ctrl+C / Ctrl+V) ──
+  // 선택한 노드들(과 그 사이 내부 링크)을 클립보드에 깊은 복사로 담는다.
+  copyNodes: (ids) => {
+    const idset = new Set(ids || []);
+    const nodes = get().config.nodes.filter((n) => idset.has(n.id));
+    if (!nodes.length) return 0;
+    const links = get().config.links.filter((l) => idset.has(l.src) && idset.has(l.dst));
+    set({ clipboard: JSON.parse(JSON.stringify({ nodes, links })) });
+    return nodes.length;
+  },
+  // 클립보드 노드/링크를 새 id·새 그룹명(전역 유니크)·위치 오프셋으로 붙여넣는다.
+  // 같은 그룹으로 묶였던 노드들은 함께 새 그룹으로 유지되어 양방향 쌍의 물리 그룹이 보존된다.
+  pasteClipboard: () => {
+    const cb = get().clipboard;
+    if (!cb || !cb.nodes.length) return null;
+    const cfg = get().config;
+    const idMap = {};
+    cb.nodes.forEach((n) => { idMap[n.id] = nextId("N"); });
+    // 복사된 비어있지 않은 그룹 → 기존 모든 그룹과 겹치지 않는 새 이름(같은 그룹은 한 이름으로)
+    const existing = new Set(cfg.nodes.map((n) => (n.group || "").trim()).filter(Boolean));
+    const groupMap = {};
+    cb.nodes.forEach((n) => {
+      const g = (n.group || "").trim();
+      if (!g || groupMap[g]) return;
+      let name = `${g} 사본`, k = 1;
+      while (existing.has(name)) { k += 1; name = `${g} 사본${k}`; }
+      existing.add(name);
+      groupMap[g] = name;
+    });
+    const newNodes = cb.nodes.map((n) => {
+      const g = (n.group || "").trim();
+      return { ...n, id: idMap[n.id], name: `${n.name || n.id} 사본`,
+        group: g ? groupMap[g] : "", x: (n.x || 0) + 40, y: (n.y || 0) + 40 };
+    });
+    const newLinks = cb.links.map((l) => ({ ...l, src: idMap[l.src], dst: idMap[l.dst] }));
+    set((s) => ({ ...pushPast(s),
+      config: { ...s.config, nodes: [...s.config.nodes, ...newNodes], links: [...s.config.links, ...newLinks] },
+      selection: { type: "node", id: newNodes[0].id } }));
+    return newNodes.length;
+  },
 
   // ── 런타임 ──
   setValidation: (validation) => set({ validation }),

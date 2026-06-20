@@ -26,6 +26,13 @@ def load_npz(path: str):
     return X, channels, A, node_ids, dt, start, step_index
 
 
+def _read_schema(path):
+    """다중 run 일관성 검증용 메타(출력 단위·채널·노드 식별자)."""
+    d = np.load(path, allow_pickle=True)
+    vs = str(d["value_scale"]) if "value_scale" in d.files else "node"
+    return vs, [str(c) for c in d["channels"]], [str(x) for x in d["node_ids"]]
+
+
 def normalized_adjacency(A: np.ndarray, directional: bool = True) -> np.ndarray:
     """전파용 정규화 인접행렬.
 
@@ -139,6 +146,17 @@ def build_multirun_dataset(paths: Sequence[str], P: int = 12, Q: int = 3, target
     paths = list(paths)
     if len(paths) < 3:
         raise ValueError("다중 run 분할에는 최소 3개 파일이 필요합니다.")
+    # 단위(value_scale)·채널·노드가 다른 파일을 섞으면 학습이 오염되므로 사전 차단
+    # (특히 node 단위와 group 단위 X.npz 혼합 금지).
+    schemas = [_read_schema(p) for p in paths]
+    vs0, ch0, ids0 = schemas[0]
+    for p, (vs, ch, ids) in zip(paths, schemas):
+        if (vs, ch, ids) != (vs0, ch0, ids0):
+            raise ValueError(
+                f"run 파일 스키마가 일치하지 않습니다: {p!r}. "
+                f"value_scale/channels/node_ids 가 같은 파일끼리만 묶으세요"
+                f"(node 단위와 group 단위 X.npz 를 섞지 말 것)."
+            )
     loaded = [load_npz(p) for p in paths]
     channels = loaded[0][1]
     target_idx = _require_target(channels, target)

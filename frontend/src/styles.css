@@ -89,6 +89,9 @@ input, select { font: inherit; border: 1px solid #cbd5e1; border-radius: 5px; pa
 
 .export-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .export-grid button { font-size: 12px; }
+.bundle-btn { width: 100%; font-size: 13px; font-weight: 700; padding: 9px 10px; margin-bottom: 6px; }
+.export-or { font-size: 11px; color: #64748b; text-align: center; margin: 4px 0; }
+.export-or code { background: #f1f5f9; padding: 0 4px; border-radius: 4px; }
 
 .bottom { height: 300px; flex-shrink: 0; border-top: 1px solid #e2e8f0; background: #fff; padding: 8px 12px; }
 .dashboard { height: 100%; display: flex; flex-direction: column; }
@@ -261,7 +264,7 @@ input, select { font: inherit; border: 1px solid #cbd5e1; border-radius: 5px; pa
 }
 .chart-modal { width: min(1100px, 97vw); height: 80vh; }
 .modal-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid #e2e8f0; }
-.modal-tabs { display: flex; gap: 6px; }
+.modal-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
 .modal-tabs button { background: #f1f5f9; border: none; padding: 7px 14px; border-radius: 8px; font-size: 14px; }
 .modal-tabs button.active { background: #2563eb; color: #fff; }
 .modal-close { border: none; background: transparent; font-size: 18px; color: #64748b; }
@@ -278,6 +281,16 @@ input, select { font: inherit; border: 1px solid #cbd5e1; border-radius: 5px; pa
 }
 .help-body .ic { background: #f1f5f9; padding: 1px 6px; border-radius: 4px; font-size: 13px; color: #be123c; }
 .help-note { margin-top: 14px; background: #fef9c3; border-radius: 6px; padding: 10px 12px; font-size: 13px; color: #854d0e; }
+
+/* 파라미터 요약 표 */
+.param-table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 13px; }
+.param-table td { border: 1px solid #e2e8f0; padding: 6px 9px; vertical-align: top; }
+.param-table td:first-child { width: 32%; font-weight: 600; color: #0f172a; background: #f8fafc; white-space: nowrap; }
+
+/* FAQ */
+.faq-item { border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; margin: 8px 0; }
+.faq-q { font-weight: 700; color: #0f172a; margin-bottom: 4px; }
+.faq-a { font-size: 13px; color: #334155; }
 
 /* 차트 컨트롤 */
 .chart-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 4px 0; }

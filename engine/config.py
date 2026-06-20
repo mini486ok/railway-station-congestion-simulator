@@ -246,7 +246,7 @@ class NodeConfig:
     throughput_cap: float = 0.0   # 게이트 등 스텝당 통과(유출) 상한. 0이면 무제한.
     group: str = ""               # 물리적 동일 장소 그룹(예: 입구/출구를 한 출입구로 합산). 빈값이면 자신만.
     elevator_capacity: float = 0.0  # 엘리베이터 1회 운행 수송 인원. 0이면 무제한.
-    elevator_cycle: int = 0       # 엘리베이터 운행 주기(슬롯). >=1 이면 엘리베이터 배치 거동 활성.
+    elevator_cycle: int = 0       # 엘리베이터 운행 주기(스텝). >=1 이면 엘리베이터 배치 거동 활성.
     x: float = 0.0                # 에디터 좌표(거리 자동 계산 보조)
     y: float = 0.0
 

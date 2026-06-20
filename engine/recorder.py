@@ -274,11 +274,18 @@ class Recorder:
         return _csv(header, rows)
 
     # ── npz (STGCN 직결) ──
-    def npz_bytes(self, cfg, normalize_stats: bool = True) -> bytes:
-        """X[T,N,F] + adjacency + edge_index + edge_attr + 메타를 npz bytes 로."""
+    def npz_bytes(self, cfg, normalize_stats: bool = True, group_level=None) -> bytes:
+        """X[T,N,F] + adjacency + edge_index + edge_attr + 메타를 npz bytes 로.
+
+        group_level=None 이면 cfg.export.output_level 을 따르고, True/False 면 그 단위를 강제한다
+        (노드+그룹 두 파일을 동시에 만드는 전체 번들 export 에서 단위를 명시 지정할 때 사용).
+        """
         exp = cfg.export
         channels = list(exp.feature_channels) or ["count"]
-        group_level = (exp.output_level != "node")
+        if group_level is None:
+            group_level = (exp.output_level != "node")
+        else:
+            group_level = bool(group_level)
         X, names, step0 = self.feature_tensor(
             channels,
             aggregate_steps=exp.aggregate_steps,
@@ -327,7 +334,10 @@ class Recorder:
             dt_seconds=np.array(cfg.dt_seconds),
             start_time_sec=np.array(cfg.start_time_sec),
             aggregate_steps=np.array(exp.aggregate_steps),
+            # output_level=실제 해상도(그룹 미정의면 group 요청이라도 node). 요청 단위/값 스케일을 별도 메타로.
             output_level=np.array("group" if use_group else "node"),
+            requested_output_level=np.array("group" if group_level else "node"),
+            value_scale=np.array("group_member_sum" if use_group else "node"),
         )
         # 출력 단위 메타: 그룹↔멤버 매핑(그룹) 또는 방향·소속그룹(노드) — 사후 재집계/교차검증용
         if use_group:

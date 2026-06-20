@@ -15,9 +15,9 @@ const DISTS = [
 // sigma(표준편차/반치폭) 입력이 의미 있는 분포
 const USES_SIGMA = new Set(["normal", "negative_binomial", "uniform", "lognormal"]);
 const DEFAULT_SCHEDULE = {
-  first_arrival: 100, headway: 300, num_trains: 0,
+  first_arrival: 100, headway: 210, num_trains: 0,
   alight_mean: 100, alight_sigma: 15, alight_dist: "normal",
-  dwell_steps: 30, train_capacity: 800, board_cap: 25, onboard_load: 0, delay_std: 0,
+  dwell_steps: 32, train_capacity: 1200, board_cap: 38, onboard_load: 0, delay_std: 0,
 };
 
 function Field({ label, info, children }) {
@@ -115,7 +115,7 @@ function NodeEditor({ node }) {
       {node.kind === "elevator" && (
         <div className="subsection">
           <div className="sub-title">엘리베이터 거동</div>
-          <Field label="운행 주기(슬롯)" info="elevator_cycle">
+          <Field label="운행 주기(스텝)" info="elevator_cycle">
             <input type="number" min="1" value={node.elevator_cycle || 0}
               onChange={(e) => set({ elevator_cycle: +e.target.value })} />
           </Field>
@@ -123,7 +123,7 @@ function NodeEditor({ node }) {
             <input type="number" min="0" value={node.elevator_capacity || 0}
               onChange={(e) => set({ elevator_capacity: +e.target.value })} />
           </Field>
-          <div className="hint">주기 슬롯마다 용량만큼 한 번에 하류로 유출됩니다.</div>
+          <div className="hint">주기 스텝마다 용량만큼 한 번에 하류로 유출됩니다.</div>
         </div>
       )}
 
