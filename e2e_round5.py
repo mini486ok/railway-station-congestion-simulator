@@ -1,5 +1,6 @@
 """3차 수정 기능 브라우저 검증: 복사/붙여넣기(Ctrl+C/V), 전체 번들(ZIP) export,
 신규 복잡 템플릿 로드+검증, 도움말 확장 탭(파라미터·개념/FAQ)."""
+import json
 import os
 import sys
 import time
@@ -134,10 +135,30 @@ with sync_playwright() as p:
     except Exception as e:
         fail("bundle export", str(e), logs)
 
+    # 8) 대량 생성(여러 시드 자동) — 2회 실행 후 ZIP(runs/run_XXXX.npz + manifest)
+    try:
+        page.fill(".batch-row input[type='number']", "2")
+        page.wait_for_timeout(150)
+        with page.expect_download(timeout=120000) as dl2:
+            page.click(".batch-export button:has-text('생성')")
+        d2 = dl2.value
+        z2 = zipfile.ZipFile(d2.path())
+        bnames = set(z2.namelist())
+        need2 = {"runs/run_0000.npz", "runs/run_0001.npz", "manifest.json", "nodes.csv", "config.json"}
+        miss2 = need2 - bnames
+        if miss2:
+            fail("batch", f"누락 {miss2}", logs)
+        man = json.loads(z2.read("manifest.json").decode("utf-8"))
+        if man.get("num_runs") != 2:
+            fail("batch", f"manifest num_runs={man.get('num_runs')}", logs)
+        results.append(f"대량 생성 ZIP({d2.suggested_filename}, {len(bnames)} files, {man['num_runs']} runs)")
+    except Exception as e:
+        fail("batch export", str(e), logs)
+
     # 모든 기능 검증 통과 — 결과를 먼저 출력하고(브라우저 종료 시 플레이키 방지) 정리.
     print("ROUND5 PASS:")
     for r in results:
-        print("  ✓", r)
+        print("  [OK]", r)  # ASCII 마커(Windows cp949 콘솔 인코딩 호환)
     try:
         browser.close()
     except Exception:

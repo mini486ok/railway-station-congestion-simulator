@@ -294,7 +294,7 @@ function transferConfig() {
   return base({
     name: "환승역 (2개 노선·환승통로)",
     total_steps: 2400,
-    // 전역 공통요인(공간 상관) + 런별 일간 변동으로 STGCN 학습 신호 다양화
+    // 전역 공통요인(공간 상관) + 런별 일간 변동으로 AI 모델 학습 신호 다양화
     demand: { day_variability_sigma: 0.12, common_factor_phi: 0.8, common_factor_sigma: 0.15 },
     nodes: [
       ...entrancePair("E_in", "E_out", "출입구", [40, 240], [40, 420], 3.0),

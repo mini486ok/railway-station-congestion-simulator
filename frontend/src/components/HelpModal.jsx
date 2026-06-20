@@ -10,8 +10,8 @@ function UsageGuide() {
     <div className="help-body">
       <p className="lead">
         철도역사 내부를 <b>노드(지점)</b> 와 <b>링크(연결)</b> 로 그리고, 이용자 흐름을 이산 시간으로
-        시뮬레이션해 지점별 <b>혼잡도(인원수) 시계열</b> 을 생성합니다. 생성 데이터는 STGCN 등
-        혼잡도 예측 AI 모델 학습에 바로 쓸 수 있습니다.
+        시뮬레이션해 지점별 <b>혼잡도(인원수) 시계열</b> 을 생성합니다. 생성 데이터는
+        혼잡도 예측 <b>AI 모델</b> 학습에 바로 쓸 수 있습니다.
       </p>
 
       <div className="help-note">
@@ -100,7 +100,7 @@ function ConceptGuide() {
       </ul>
       <p>
         <b>러시아워 프로파일</b>을 켜면 평균에 시간대 배율(예: 08시 ×2.5, 18시 ×2.2, 야간 ×0.2)이 곱해집니다.
-        <b>수요 다양성</b>(전역 설정)은 런(시드)별 일간 배율과 노드 간 공통요인을 더해 STGCN 학습 신호를 풍부하게 합니다.
+        <b>수요 다양성</b>(전역 설정)은 런(시드)별 일간 배율과 노드 간 공통요인을 더해 AI 모델 학습 신호를 풍부하게 합니다.
       </p>
 
       <h4>🚶 동적 체류확률(혼잡 → 느려짐)</h4>
@@ -171,7 +171,19 @@ station_GNN_bundle.zip{"\n"}
 └─ README.txt</pre>
       <p>
         <b>연결성</b>(edges의 adjacency)·<b>거리</b>(distance)·<b>시간</b>(τ)·<b>피처</b>(timeseries/X.npz)의
-        GNN 구성 파일을 <b>두 해상도로 동시에</b> 얻습니다. 물리 그룹이 없으면 두 폴더 내용은 동일합니다.
+        구성 파일을 <b>두 해상도로 동시에</b> 얻습니다. 물리 그룹이 없으면 두 폴더 내용은 동일합니다.
+      </p>
+
+      <h4><Code>대량 생성(ZIP)</Code> — 여러 시드 한 번에</h4>
+      <pre className="sample">
+station_dataset_x20.zip{"\n"}
+├─ runs/  run_0000.npz  run_0001.npz  …  run_0019.npz   ← 시드만 다른 N개 실현{"\n"}
+├─ nodes.csv  edges.csv   (모든 run 공통 그래프){"\n"}
+├─ config.json   manifest.json(seeds·단위·채널)</pre>
+      <p>
+        “실행 횟수”를 정하면 <b>시드를 자동으로 1씩 바꿔 N회</b> 실행하고 모든 결과를 한 ZIP으로 받습니다.
+        각 <Code>run_XXXX.npz</Code>는 독립 실현이라, <b>run 단위로 train/val/test를 나누면</b> 같은 시나리오의
+        시간조각이 섞이는 누설을 막을 수 있습니다(대량 코퍼스 생성용).
       </p>
 
       <h4><Code>timeseries.csv</Code> — 혼잡도 시계열(핵심)</h4>
@@ -200,11 +212,11 @@ step,time_sec,node_id,count,density,inflow,outflow,p_stay{"\n"}
         <li><b>출력 단위</b>: ‘물리 그룹별’이면 같은 그룹의 양방향 노드가 1개로 합쳐져 행/노드 수가 줄고 adjacency도 그룹 그래프가 됩니다.</li>
       </ul>
 
-      <h4><Code>X.npz</Code> — STGCN 직결 텐서(가장 중요)</h4>
+      <h4><Code>X.npz</Code> — AI 모델 직결 텐서(가장 중요)</h4>
       <p>numpy 압축 파일. 아래 배열들을 담습니다.</p>
       <ul>
         <li><Code>X</Code> [T, N, F]: 특징 텐서 (스텝 × 노드 × 채널). 채널 예: count, density, inflow, outflow, (옵션)count_noisy</li>
-        <li><Code>adjacency</Code> [N, N]: 인접행렬(그래프 구조) — STGCN 그래프 입력</li>
+        <li><Code>adjacency</Code> [N, N]: 인접행렬(그래프 구조) — 그래프 기반 AI 모델 입력</li>
         <li><Code>edge_index</Code> [2, M], <Code>edge_attr</Code> [M, 3]: 엣지 리스트 + (weight, distance, tau)</li>
         <li><Code>node_ids</Code>, <Code>node_kinds</Code>, <Code>channels</Code>, <Code>output_level</Code>: 메타데이터(출력 단위 node/group)</li>
         <li><Code>feat_mean</Code>, <Code>feat_std</Code> [N, F]: 채널별 정규화 통계(+ 하위호환 <Code>count_mean/std</Code>)</li>
@@ -225,7 +237,7 @@ print(X.shape, A.shape)</pre>
         있습니다(혼잡도=평균, 유입·유출=합계). 예측 주기에 맞춰 조정하세요.
       </div>
 
-      <h4>🎯 STGCN 학습에 쓸 때(권장)</h4>
+      <h4>🎯 AI 모델 학습에 쓸 때(권장)</h4>
       <ul>
         <li><b>학습 단위는 ‘물리 그룹별(group/)’ 권장</b>: 양방향 2노드를 한 장소로 합쳐 신호가 풍부합니다.
           ‘노드별(node/)’은 하차·진출 노드가 대부분 0인 희소 신호라, 그래프 구조 실험용으로 적합합니다.
@@ -296,9 +308,10 @@ function FaqGuide() {
         노드 수가 많거나(예: 초대형 역) 총 스텝이 크면 느려질 수 있습니다. <b>배속</b>을 높이거나, 화면 관찰 없이 결과만 필요하면
         바로 <b>내보내기</b>(끝까지 실행 후 저장)를 누르세요. 대규모는 로컬 <Code>cli.py</Code>가 가장 빠릅니다.
       </FaqItem>
-      <FaqItem q="생성한 데이터를 STGCN에 어떻게 넣나요?">
+      <FaqItem q="생성한 데이터를 AI 모델에 어떻게 넣나요?">
         <Code>X.npz</Code>의 <Code>X[T,N,F]</Code>(특징)와 <Code>adjacency[N,N]</Code>(그래프)를 그대로 입력으로 쓰면 됩니다.
-        저장소 <Code>ml/</Code>에 참조 STGCN 학습·평가 스크립트(로컬 PyTorch)가 있습니다.
+        대량 데이터셋이 필요하면 “데이터셋 내보내기”의 <b>대량 생성</b>으로 여러 시드를 한 번에 받으세요.
+        저장소 <Code>ml/</Code>에 참조 예시 모델(STGCN) 학습·평가 스크립트(로컬 PyTorch)가 있습니다.
       </FaqItem>
     </div>
   );

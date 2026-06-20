@@ -65,7 +65,7 @@ export function defaultConfig() {
       noise_sigma: 2.0,
       feature_channels: ["count", "density", "inflow", "outflow"],
     },
-    // 전역 수요 변동(공간 상관 공통요인 + 런별 일간 배율) — STGCN 학습 신호 다양화
+    // 전역 수요 변동(공간 상관 공통요인 + 런별 일간 배율) — AI 모델 학습 신호 다양화
     demand: { day_variability_sigma: 0.1, common_factor_phi: 0.75, common_factor_sigma: 0.1 },
     // 모든 물리 공간을 진입/진출 2노드로 분리하고 물리 그룹(출입구·대합실·게이트·계단·승강장1)으로 묶음.
     nodes: [

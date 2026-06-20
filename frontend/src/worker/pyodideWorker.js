@@ -178,6 +178,24 @@ self.onmessage = async (e) => {
       }
       break;
 
+    case "exportBatch":
+      try {
+        const info = JSON.parse(bridge.batch_prepare(m.num, m.seedStart || 0, m.level || ""));
+        const total = info.num;
+        for (let i = 0; i < total; i++) {
+          bridge.batch_run_one();
+          post({ type: "batchProgress", id: m.id, done: i + 1, total });
+        }
+        const pyBytes = bridge.batch_finish();
+        const u8 = pyBytes.toJs();
+        pyBytes.destroy();
+        const buf = u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength);
+        post({ type: "result", id: m.id, data: { bytes: buf } }, [buf]);
+      } catch (err) {
+        post({ type: "result", id: m.id, error: String(err) });
+      }
+      break;
+
     default:
       break;
   }

@@ -2,7 +2,7 @@
 
 철도역사 내부 주요 지점(노드)과 연결성(링크)으로 구성된 그래프 위에서, 보행 특성·물리
 사실을 반영한 **이산 시간 시뮬레이션**으로 노드별 혼잡도(존재 인원수) 시계열을 생성한다.
-생성 데이터는 **STGCN 등 GNN 기반 혼잡도 예측 모델**의 학습/평가/테스트에 바로 사용할 수
+생성 데이터는 **혼잡도 예측 AI 모델**(예: STGCN 등 GNN)의 학습/평가/테스트에 바로 사용할 수
 있다. 최종적으로 **GitHub Pages 정적 웹앱**(브라우저 Pyodide로 Python 엔진 실행)으로 배포한다.
 
 전체 설계는 [개발 계획 문서](../../Users/SMYU/.claude/plans/resilient-floating-mitten.md)
@@ -77,7 +77,7 @@ Vite 빌드 → Pages 배포를 자동 수행한다. 저장소 Settings → Page
 > 브라우저 스모크 테스트: `python e2e_smoke.py`(Playwright, 미리보기 서버 필요) — Pyodide
 > 엔진 로드 → 시뮬 실행 → CSV/npz 다운로드까지 end-to-end 검증.
 
-## 출력 데이터셋 (STGCN 직결)
+## 출력 데이터셋 (AI 모델 학습용)
 
 | 파일 | 내용 |
 |---|---|
@@ -93,7 +93,10 @@ Vite 빌드 → Pages 배포를 자동 수행한다. 저장소 Settings → Page
   **전체 번들(ZIP)** 버튼으로 `node/`·`group/` 두 폴더 + `config.json` + `README.txt`를 한 번에 내려받는다.
 - **출력 단위**: `export.output_level`(`group`/`node`). `group`이면 같은 물리 그룹의 양방향 노드를 하나로 합산해
   N(=노드)이 G(=그룹)로 줄고 adjacency도 그룹 그래프가 된다. `node`면 모든 노드를 그대로 출력한다.
-- **STGCN 학습 권장**: 신호가 풍부한 **`group/`** 를 기본으로 쓰고(`node/`는 하차·진출 노드가 희소),
+- **대량(다중 시드) 생성**: 웹 ExportPanel 의 **대량 데이터셋 생성**에서 실행 횟수 N 을 정하면 시드를
+  자동으로 1씩 바꿔 N회 실행하고, 모든 결과를 한 ZIP(`runs/run_XXXX.npz` + 공유 그래프 + `manifest.json`)으로
+  내려받는다. CLI 는 `--batch-seeds 0 1 2 …` 로 같은 코퍼스를 만든다. run 단위 train/val/test 분할 권장.
+- **AI 모델 학습 권장**: 신호가 풍부한 **`group/`** 를 기본으로 쓰고(`node/`는 하차·진출 노드가 희소),
   채널별 `feat_mean/std`로 z-score 정규화하라. npz 의 `value_scale`(`node`/`group_member_sum`)·
   `requested_output_level` 메타로 단위를 구분하며, **node·group 데이터를 한 모델에 섞지 말 것**.
 - **시간 해상도**: 시뮬 Δ(세밀)와 export 간격을 분리. `export.aggregate_steps`로 N스텝 집계

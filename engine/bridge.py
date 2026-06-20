@@ -176,6 +176,82 @@ _BUNDLE_README = (
 )
 
 
+_BATCH_README = (
+    "철도역사 혼잡도 합성데이터 — 대량(다중 시드) 데이터셋\n"
+    "=====================================================\n\n"
+    "runs/run_XXXX.npz : 시드(XXXX)만 다른 독립 실현(run). 각 파일은 X[T,N,F]+adjacency+\n"
+    "                    edge_index+edge_attr+정규화통계+메타를 담은 AI 모델 직결 텐서.\n"
+    "nodes.csv, edges.csv : 모든 run 공통 그래프 구조(시드와 무관).\n"
+    "config.json  : 재현용 설정(seed 는 manifest 의 seeds 참고).\n"
+    "manifest.json: num_runs, seeds, output_level, channels 등.\n\n"
+    "활용: 여러 run 을 하나의 코퍼스로 모아 run 단위로 train/val/test 를 나누면\n"
+    "      같은 시나리오의 시간조각이 학습/평가에 섞이는 누설을 막을 수 있습니다.\n"
+)
+
+# ── 대량(다중 시드) 데이터셋 생성 — N회 실행을 한 ZIP 으로 ──
+_batch = None
+
+
+def batch_prepare(num_runs, seed_start: int = 0, level: str = "") -> str:
+    """대량 생성을 시작한다(ZIP 버퍼 초기화). 이후 batch_run_one 을 num 회 호출."""
+    global _batch
+    assert _cfg is not None
+    import zipfile
+    gl = _level_flag(level)
+    buf = io.BytesIO()
+    zf = zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED)
+    n = max(1, int(num_runs))
+    _batch = {"num": n, "seed0": int(seed_start), "gl": gl,
+              "buf": buf, "zf": zf, "i": 0, "seeds": [], "level": None}
+    return json.dumps({"num": n, "seed_start": int(seed_start)})
+
+
+def batch_run_one() -> str:
+    """다음 시드로 1회 시뮬을 실행하고 runs/run_{seed}.npz 를 ZIP 에 추가."""
+    global _batch
+    assert _batch is not None and _cfg is not None
+    import zipfile
+    b = _batch
+    seed = b["seed0"] + b["i"]
+    cfg = SimConfig.from_dict(_cfg.to_dict())   # 시드만 바꾼 독립 실현
+    cfg.seed = seed
+    sim = Simulator(cfg)
+    rec = sim.run()
+    if b["i"] == 0:
+        # 시드와 무관한 공유 그래프·설정은 1회만 기록
+        b["zf"].writestr("nodes.csv", "﻿" + rec.nodes_csv(b["gl"]))
+        b["zf"].writestr("edges.csv", "﻿" + rec.edges_csv(b["gl"]))
+        b["zf"].writestr("config.json", _cfg.to_json())
+        b["level"] = "group" if (rec.model.has_grouping and b["gl"]) else "node"
+    b["zf"].writestr(zipfile.ZipInfo("runs/run_%04d.npz" % seed),
+                     rec.npz_bytes(cfg, group_level=b["gl"]), compress_type=zipfile.ZIP_STORED)
+    b["seeds"].append(seed)
+    b["i"] += 1
+    return json.dumps({"done": b["i"], "total": b["num"], "seed": seed})
+
+
+def batch_finish() -> bytes:
+    """대량 생성 ZIP 을 마감(manifest/README 추가) 후 bytes 반환."""
+    global _batch
+    assert _batch is not None and _cfg is not None
+    b = _batch
+    manifest = {
+        "num_runs": b["num"],
+        "seeds": b["seeds"],
+        "output_level": b["level"],
+        "channels": list(_cfg.export.feature_channels),
+        "aggregate_steps": _cfg.export.aggregate_steps,
+        "total_steps": _cfg.total_steps,
+        "note": "각 runs/run_XXXX.npz 는 시드만 다른 독립 실현(run). AI 모델 학습 시 run 단위 분할 권장.",
+    }
+    b["zf"].writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
+    b["zf"].writestr("README.txt", _BATCH_README)
+    b["zf"].close()
+    data = b["buf"].getvalue()
+    _batch = None
+    return data
+
+
 def export_bundle() -> bytes:
     """노드 단위 + 물리 그룹 단위 GNN 파일을 한 번에 담은 ZIP bytes.
 

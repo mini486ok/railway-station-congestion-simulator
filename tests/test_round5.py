@@ -83,6 +83,34 @@ def test_bridge_export_bundle_zip():
     assert json.loads(z.read("config.json").decode("utf-8"))["nodes"]
 
 
+# ── bridge 대량 생성: 시드 자동 변경 N회 → runs/ + 공유 그래프 + manifest 를 담은 ZIP ──
+def test_bridge_export_batch_zip():
+    cfg = _paired_dict("group")
+    # 수요 변동을 주어 시드별로 실현이 달라지게(노이즈 포함)
+    cfg["demand"] = {"day_variability_sigma": 0.2, "common_factor_phi": 0.7, "common_factor_sigma": 0.2}
+    cfg["export"]["noise_enabled"] = True
+    cfg["export"]["noise_model"] = "poisson"
+    bridge.create(json.dumps(cfg))
+    bridge.batch_prepare(3, 5, "group")
+    for _ in range(3):
+        bridge.batch_run_one()
+    z = zipfile.ZipFile(io.BytesIO(bytes(bridge.batch_finish())))
+    names = set(z.namelist())
+    for s in (5, 6, 7):
+        assert f"runs/run_{s:04d}.npz" in names, f"run_{s:04d} 누락"
+    for f in ("nodes.csv", "edges.csv", "config.json", "manifest.json", "README.txt"):
+        assert f in names, f"{f} 누락"
+    man = json.loads(z.read("manifest.json").decode("utf-8"))
+    assert man["num_runs"] == 3 and man["seeds"] == [5, 6, 7] and man["output_level"] == "group"
+    # run npz 는 ZIP_STORED(이중압축 회피) + 그룹 단위(노드 2)
+    assert z.getinfo("runs/run_0005.npz").compress_type == zipfile.ZIP_STORED
+    d5 = np.load(io.BytesIO(z.read("runs/run_0005.npz")), allow_pickle=True)
+    d6 = np.load(io.BytesIO(z.read("runs/run_0006.npz")), allow_pickle=True)
+    assert d5["X"].shape[1] == 2
+    # 시드가 다르면 실현(특징 텐서)이 달라야 한다
+    assert not np.allclose(d5["X"], d6["X"])
+
+
 # ── CLI export_run 이 루트(하위호환) + node/ + group/ 를 모두 생성한다 ──
 def test_cli_export_run_both_levels(tmp_path):
     import cli

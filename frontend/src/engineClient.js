@@ -21,6 +21,9 @@ export class EngineClient {
         onSnapshot && onSnapshot(m.snap, m.type === "finished");
       } else if (m.type === "fatal" || m.type === "error") {
         onError && onError(m.error);
+      } else if (m.type === "batchProgress") {
+        const p = this.pending.get(m.id);
+        if (p && p.onProgress) p.onProgress(m.done, m.total);
       } else if (m.type === "result") {
         const p = this.pending.get(m.id);
         if (p) {
@@ -64,6 +67,14 @@ export class EngineClient {
   // 노드 단위 + 물리 그룹 단위 GNN 파일을 한 번에 담은 ZIP
   exportBundle() {
     return this._call("exportBundle");
+  }
+  // 시드를 자동으로 바꿔 num 회 실행한 전체 데이터셋(ZIP). onProgress(done,total) 콜백.
+  exportBatch(num, seedStart = 0, onProgress = null, level = "") {
+    return new Promise((resolve, reject) => {
+      const id = ++this.idc;
+      this.pending.set(id, { resolve, reject, onProgress });
+      this.worker.postMessage({ type: "exportBatch", id, num, seedStart, level });
+    });
   }
 
   run() {
